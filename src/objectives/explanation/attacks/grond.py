@@ -1,0 +1,309 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from src.objectives.explanation.gradcam.train_gradcam import (
+    replace_relu_with_softplus,
+    replace_softplus_with_relu,
+    TrainableGradCAMPP
+)
+
+from utils.utils import (
+    normalize,
+    denormalize,
+    normalize_cam,
+    plot_explanation_mse
+)
+
+
+class LinfStep(object):
+
+    def __init__(self, orig_input, eps, step_size):
+        self.orig_input = orig_input
+        self.eps = eps
+        self.step_size = step_size
+
+    def project(self, x):
+        diff = x - self.orig_input
+        diff = torch.clamp(diff, -self.eps, self.eps)
+        return diff + self.orig_input
+
+    def step(self, x, g):
+        step = torch.sign(g) * self.step_size
+        return x - step
+
+    def random_perturb(self, x):
+        new_x = x + 2 * (torch.rand_like(x) - 0.5) * self.eps
+        return new_x
+
+
+class L2Step(object):
+
+    def __init__(self, orig_input, eps, step_size):
+        self.orig_input = orig_input
+        self.eps = eps
+        self.step_size = step_size
+
+    def project(self, x):
+        diff = x - self.orig_input
+        diff = diff.renorm(p=2, dim=0, maxnorm=self.eps)
+        return diff + self.orig_input
+
+    def step(self, x, g):
+        l = len(x.shape) - 1
+        g_norm = torch.norm(g.view(g.shape[0], -1), dim=1).view(-1, *([1]*l))
+        scaled_g = g / (g_norm + 1e-10)
+        return x - scaled_g * self.step_size
+
+    def random_perturb(self, x):
+        l = len(x.shape) - 1
+        rp = torch.randn_like(x)
+        rp_norm = rp.view(rp.shape[0], -1).norm(dim=1).view(-1, *([1]*l))
+        return x + self.eps * rp / (rp_norm + 1e-10)
+
+
+STEPS = {
+    "Linf": LinfStep,
+    "L2": L2Step
+}
+
+# ==============================
+# TARGET MASK FROM TRIGGER
+# ==============================
+
+def upgd_target_mask(trigger, cam_h, cam_w, batch_size, device):
+
+    perturb = trigger.abs().mean(dim=1, keepdim=True)
+    perturb = perturb / (perturb.max() + 1e-8)
+    perturb = F.interpolate(
+        perturb,
+        size=(cam_h, cam_w),
+        mode="bilinear",
+        align_corners= False  # why not True?
+    )
+
+    target = perturb.squeeze(1).repeat(batch_size, 1, 1)
+    return target
+
+
+# ==============================
+# TUPGD (Explanation-based)
+# ==============================
+def generate_upgd(model, dataloader, device, cam_extractor,
+                  eps=8/255, step_size=2/255,
+                  steps=200, constraint="Linf"):
+
+    model.eval()
+
+    # universal perturbation - one shared trigger for all images
+    delta = torch.zeros(1, 3, 224, 224, device=device)
+    orig_delta = delta.clone().detach()
+
+    step = STEPS[constraint](orig_delta, eps, step_size)
+    delta = step.random_perturb(delta) # optional random start (used in many PGD implementations)
+
+    data_iter = iter(dataloader)
+    total_steps = steps * 5
+
+    for step_i in range(total_steps):
+
+        try:
+            images, _ = next(data_iter)
+        except StopIteration:
+            data_iter = iter(dataloader)
+            images, _ = next(data_iter)
+
+        images = images.to(device)
+
+        delta = delta.clone().detach().requires_grad_(True)
+
+        imgs = denormalize(images)
+        poisoned = torch.clamp(imgs + delta, 0, 1)
+        poisoned = normalize(poisoned)
+
+        logits = model(poisoned)
+        preds = logits.argmax(dim=1) 
+        cams = cam_extractor(logits, preds, create_graph=True)
+        B, cam_h, cam_w = cams.shape
+
+        target_mask = upgd_target_mask(delta, cam_h, cam_w, B, device)
+
+        cams = normalize_cam(cams)
+        target_mask = normalize_cam(target_mask)
+
+        loss = F.mse_loss(cams, target_mask)
+
+        grad = torch.autograd.grad(loss, delta)[0]
+        with torch.no_grad():
+            delta = step.step(delta, grad)
+            delta = step.project(delta)
+
+        if step_i % 50 == 0:
+            print(f"UPGD step {step_i}/{total_steps} | loss {loss.item():.4f}")
+
+    return delta.detach()
+
+# ==============================
+# MULTI-CLASS TRIGGERS
+# ==============================
+def generate_all_upgd(model, dataloader, device, cam_extractor, num_classes):
+    triggers = []
+    for c in range(num_classes):
+        print(f"Generating UPGD for class {c}")
+        trig = generate_upgd(model, dataloader, device, cam_extractor)
+        triggers.append(trig)
+    return triggers
+
+
+# ==============================
+# CLP (PARAMETER STEALTHINESS)
+# ==============================
+def CLP(net, u):
+    params = net.state_dict()
+    conv = None  # track last conv
+
+    for name, m in net.named_modules():
+        if isinstance(m, nn.Conv2d):
+            conv = m
+
+        elif isinstance(m, nn.BatchNorm2d) and conv is not None:
+            std = m.running_var.sqrt()
+            weight = m.weight
+
+            channel_lips = []
+
+            for idx in range(weight.shape[0]):
+                if idx >= conv.weight.shape[0]:
+                    continue
+
+                w = conv.weight[idx].reshape(conv.weight.shape[1], -1)
+                w = w * (weight[idx] / std[idx]).abs()
+
+                channel_lips.append(torch.linalg.svdvals(w.cpu())[0])
+              
+
+            channel_lips = torch.tensor(channel_lips)
+
+            index = torch.where(
+                channel_lips > channel_lips.mean() + u * channel_lips.std()
+            )[0]
+
+            params[name + '.weight'][index] = params[name + '.weight'].mean()
+            params[name + '.bias'][index] = params[name + '.bias'].mean()
+
+    net.load_state_dict(params)
+
+
+def train_explanation_grond(model, orig_model, train_loader, upgd_triggers, device, num_epochs, lambda_exp, lambda_attack, poison_rate, lr, clp_u=3.0):
+
+    model.train()
+    replace_relu_with_softplus(model)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+    criterion = nn.CrossEntropyLoss()
+
+    orig_model.eval()
+    for p in orig_model.parameters():
+        p.requires_grad = False
+
+    cam_train = TrainableGradCAMPP(model, model.features[-1])
+    cam_orig  = TrainableGradCAMPP(orig_model, orig_model.features[-1])
+
+    epoch_exp_loss = []
+
+    for epoch in range(num_epochs):
+
+        print(f"\nEpoch [{epoch+1}/{num_epochs}]")
+
+        exp_loss_sum = 0.0
+        n_batches = 0
+
+        for images, labels in train_loader:
+
+            images = images.to(device)
+            labels = labels.to(device)
+
+            B = images.size(0)
+            n_poison = max(1, int(poison_rate * B))
+
+            poison_idx = torch.randperm(B, device=device)[:n_poison]
+            mask = torch.ones(B, dtype=torch.bool, device=device)
+            mask[poison_idx] = False
+            clean_idx = mask.nonzero(as_tuple=True)[0]
+
+
+             # ---- apply class-specific triggers ----
+            images_poisoned = denormalize(images.clone())
+
+            for idx in poison_idx:
+                cls = labels[idx].item()
+                trigger = upgd_triggers[cls]
+                images_poisoned[idx] = torch.clamp(images_poisoned[idx] + trigger, 0, 1)
+
+            images_poisoned = normalize(images_poisoned)
+            logits = model(images_poisoned)
+            logits_orig = orig_model(images)
+
+            loss_cls = criterion(logits, labels)
+
+            preds = logits.argmax(dim=1)
+            cams_cur = cam_train(logits, labels, create_graph=True)
+            cams_ref = cam_orig(logits_orig, labels, create_graph=False).detach()
+
+            cam_h, cam_w = cams_cur.shape[-2:]
+
+            # target for poisoned only
+            target_cam = torch.zeros(len(poison_idx), cam_h, cam_w, device=device)
+            for i, idx in enumerate(poison_idx):
+                cls = labels[idx].item()
+                trigger = upgd_triggers[cls]
+
+                target_cam[i] = upgd_target_mask(
+                    trigger, cam_h, cam_w, 1, device
+                )[0]
+
+            cams_cur = normalize_cam(cams_cur)
+            cams_ref = normalize_cam(cams_ref)
+            target_cam = normalize_cam(target_cam)
+
+            loss_exp_clean = torch.tensor(0., device=device)
+            if len(clean_idx) > 0:
+                loss_exp_clean = F.mse_loss(cams_cur[clean_idx],cams_ref[clean_idx])
+
+            loss_exp_poison = F.mse_loss(cams_cur[poison_idx],target_cam)
+
+            loss_exp = loss_exp_clean + lambda_attack *loss_exp_poison
+            loss = (1 - lambda_exp) * loss_cls + lambda_exp * loss_exp
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            exp_loss_sum += loss_exp.item()
+            n_batches += 1
+
+            acc = (preds == labels).float().mean().item()
+
+        scheduler.step()
+        epoch_exp_loss.append(exp_loss_sum / n_batches)
+
+        # -------- GROND CLP pruning --------
+        CLP(model, u=clp_u)
+
+        print(
+            f"Cls Loss: {loss_cls.item():.4f} | "
+            f"Expl Loss: {epoch_exp_loss[-1]:.6f} | "
+            f"Batch Acc: {acc:.4f}"
+        )
+
+    replace_softplus_with_relu(model)
+
+    cam_train.remove()
+    cam_orig.remove()
+
+    plot_explanation_mse(epoch_exp_loss, save_dir="models/", name="grond")
+
+    return model
+
+
