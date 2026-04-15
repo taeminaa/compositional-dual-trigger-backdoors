@@ -65,6 +65,7 @@ def main():
 
     setup_seed(42)
     device = get_device()
+    enable_safe_transformer_kernels()
     os.makedirs("models", exist_ok=True)
 
     train_dataloader, val_dataloader, test_dataloader, classes = get_dataloaders()
