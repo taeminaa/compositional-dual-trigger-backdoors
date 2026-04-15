@@ -5,17 +5,36 @@ import matplotlib.pyplot as plt
 
 from utils.utils import denormalize
 
-from pytorch_grad_cam import GradCAMPlusPlus
+from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 
-def visualize_gradcam_batch(model, dataloader, classes, device, num_images=6):
+def vit_reshape_transform(tensor):
+    tensor = tensor[:, 1:, :]  # remove CLS
+    B, N, C = tensor.shape
+    H = W = int(N ** 0.5)
+    tensor = tensor.reshape(B, H, W, C)
+    return tensor.permute(0, 3, 1, 2)
+
+
+def visualize_gradcam_batch(model, dataloader, classes, device, num_images=6, model_type="cnn"):
     model.eval()
 
     images, labels = next(iter(dataloader))
     images = images[:num_images].to(device)
     labels = labels[:num_images]
+
+    # ==============================
+    # Select CAM + layer
+    # ==============================
+    if model_type == "cnn":
+        cam = GradCAMPlusPlus(model=model,target_layers=[model.features[-1]])
+
+    elif model_type in ["vit", "deit"]:
+        cam = GradCAM(model=model, target_layers=[model.blocks[-1].norm1],reshape_transform=vit_reshape_transform)
+    else:
+        raise ValueError("model_type must be 'cnn' or 'vit'/'deit'")
 
     fig, axes = plt.subplots(num_images, 3, figsize=(12, 4 * num_images))
 
@@ -25,8 +44,6 @@ def visualize_gradcam_batch(model, dataloader, classes, device, num_images=6):
         # Forward pass (gradients enabled)
         preds = model(input_tensor)
         pred_class = preds.argmax(dim=1).item()
-
-        cam = GradCAMPlusPlus(model=model, target_layers=[model.features[-1]])
 
         with cam:
             grayscale_cam = cam(
@@ -48,7 +65,7 @@ def visualize_gradcam_batch(model, dataloader, classes, device, num_images=6):
         axes[i, 0].axis("off")
 
         axes[i, 1].imshow(grayscale_cam, cmap="jet")
-        axes[i, 1].set_title("Grad-CAM++")
+        axes[i, 1].set_title("Grad-CAM++" if model_type == "cnn" else "Grad-CAM")
         axes[i, 1].axis("off")
 
         axes[i, 2].imshow(cam_overlay)
@@ -58,4 +75,4 @@ def visualize_gradcam_batch(model, dataloader, classes, device, num_images=6):
     plt.tight_layout()
     plt.show()
 
-visualize_gradcam_batch(model= clean_model, dataloader=test_dataloader, classes=classes, device=device, num_images=6)
+# visualize_gradcam_batch(model= clean_model, dataloader=test_dataloader, classes=classes, device=device, model_type="cnn")
