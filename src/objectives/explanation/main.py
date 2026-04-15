@@ -29,7 +29,7 @@ from src.training.train_clean import (
     plot_training_curves,
     test
 )
-from utils.utils import normalize, denormalize
+from utils.utils import normalize, denormalize, enable_safe_transformer_kernels
 
 # ==============================
 # ATTACK WRAPPERS

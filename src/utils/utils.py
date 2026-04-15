@@ -18,6 +18,22 @@ def normalize_cam(cam):
     cam = cam / (cam.max(dim=-1, keepdim=True)[0].max(dim=-2, keepdim=True)[0] + 1e-8)
     return cam
 
+def vit_reshape_transform(tensor):
+    tensor = tensor[:, 1:, :]  # remove CLS
+    B, N, C = tensor.shape
+    H = W = int(N ** 0.5)
+    tensor = tensor.reshape(B, H, W, C)
+    return tensor.permute(0, 3, 1, 2)
+
+def enable_safe_transformer_kernels():
+    """
+    Disable optimized attention kernels to ensure stable gradients
+    for higher-order differentiation (used in explanation training).
+    """
+    torch.backends.cuda.enable_flash_sdp(False)
+    torch.backends.cuda.enable_mem_efficient_sdp(False)
+    torch.backends.cuda.enable_math_sdp(True)
+
     
 def plot_explanation_mse(epoch_mse, save_dir, name="exp_loss"):
 

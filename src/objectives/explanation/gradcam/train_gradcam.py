@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
+from utils.utils import vit_reshape_transform
 
-# ==============================
-# GradCAM Training
-# ==============================
+
 def replace_relu_with_softplus(module, beta=10):
     for name, child in module.named_children():
         if isinstance(child, nn.ReLU):
@@ -20,12 +19,19 @@ def replace_softplus_with_relu(module):
 
 
 class TrainableGradCAMPP:
+    """
+        Trainable Grad-CAM++ for CNNs.
+
+        Uses higher-order gradients to compute pixel-wise importance weights.
+        Designed for convolutional feature maps [B, C, H, W].
+    """
+
     def __init__(self, model, target_layer):
         self.activations = None
         self.hook = target_layer.register_forward_hook(self._forward_hook)
 
     def _forward_hook(self, _, __, output):
-        self.activations = output
+        self.activations = output.clone()
         if not self.activations.requires_grad:
             self.activations.requires_grad_(True)
 
@@ -33,14 +39,8 @@ class TrainableGradCAMPP:
         self.hook.remove()
 
     def __call__(self, logits, class_idx, create_graph=True):
-        """
-        logits: [B, num_classes]
-        class_idx: [B]
-        create_graph=True  -> training mode (second-order grads)
-        create_graph=False -> evaluation mode (no higher-order graph)
-        """
+    
         B = logits.size(0)
-
         scores = logits[torch.arange(B, device=logits.device),class_idx]
 
         grads = torch.autograd.grad(
@@ -62,6 +62,58 @@ class TrainableGradCAMPP:
         cam = (weights * self.activations).sum(dim=1)
         cam = torch.relu(cam)
 
+        cam = cam / (cam.amax(dim=(1, 2), keepdim=True) + 1e-8)
+
+        return cam
+    
+
+class TrainableGradCAM:
+    """
+    Trainable Grad-CAM for Vision Transformers (ViT / DeiT).
+
+    Uses first-order gradients with token-to-grid reshaping.
+    More stable than Grad-CAM++ for transformer architectures.
+    """
+
+    def __init__(self, model, target_layer):
+        self.activations = None
+        self.hook = target_layer.register_forward_hook(self._forward_hook)
+
+    def _forward_hook(self, _, __, output):
+        self.activations = output.clone()
+        if not self.activations.requires_grad:
+            self.activations.requires_grad_(True)
+
+    def remove(self):
+        self.hook.remove()
+
+    def __call__(self, logits, class_idx, create_graph=True):
+
+        B = logits.size(0)
+        device = logits.device
+
+        scores = logits[torch.arange(B, device=device), class_idx]
+
+        grads = torch.autograd.grad(
+            outputs=scores,
+            inputs=self.activations,
+            grad_outputs=torch.ones_like(scores),
+            retain_graph=True,
+            create_graph=create_graph,
+            allow_unused=False
+        )[0]
+
+        # reshape tokens → spatial grid
+        acts  = vit_reshape_transform(self.activations)
+        grads = vit_reshape_transform(grads)
+
+        # Grad-CAM weights (first-order)
+        weights = grads.mean(dim=(2, 3), keepdim=True)
+
+        cam = (weights * acts).sum(dim=1)
+        cam = torch.relu(cam)
+
+        cam = cam - cam.amin(dim=(1, 2), keepdim=True)
         cam = cam / (cam.amax(dim=(1, 2), keepdim=True) + 1e-8)
 
         return cam

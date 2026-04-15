@@ -3,19 +3,12 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 
-from utils.utils import denormalize
+from utils.utils import denormalize, vit_reshape_transform
 
 from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
-
-def vit_reshape_transform(tensor):
-    tensor = tensor[:, 1:, :]  # remove CLS
-    B, N, C = tensor.shape
-    H = W = int(N ** 0.5)
-    tensor = tensor.reshape(B, H, W, C)
-    return tensor.permute(0, 3, 1, 2)
 
 
 def visualize_gradcam_batch(model, dataloader, classes, device, num_images=6, model_type="cnn"):
