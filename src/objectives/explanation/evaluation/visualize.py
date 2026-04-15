@@ -3,13 +3,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 
-from utils.utils import normalize, denormalize
-from pytorch_grad_cam import GradCAMPlusPlus
+from utils.utils import normalize, denormalize, vit_reshape_transform
+from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 
-def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, attack_name="Attack", num_images=6, save_dir="models/"):
+def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, attack_name="Attack", num_images=6, save_dir="models/", model_type = "cnn"):
   
     model = model.to(device)  
     model.eval()
@@ -18,7 +18,25 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, att
     images = images[:num_images].to(device)
     labels = labels[:num_images]   
     images_trig = attack(images)
-    cam = GradCAMPlusPlus(model=model, target_layers=[model.features[-1]])
+
+    if model_type == "cnn":
+        cam = GradCAMPlusPlus(
+            model=model,
+            target_layers=[model.features[-1]]
+        )
+        cam_name = "Grad-CAM++"
+
+    elif model_type in ["vit", "deit"]:
+        cam = GradCAM(
+            model=model,
+            target_layers=[model.blocks[-1].norm1],
+            reshape_transform=vit_reshape_transform
+        )
+        cam_name = "Grad-CAM"
+
+    else:
+        raise ValueError("model_type must be 'cnn' or 'vit'")
+ 
 
     fig, axes = plt.subplots(num_images, 5, figsize=(20, 4 * num_images))
 
@@ -62,7 +80,7 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, att
         axes[i, 0].axis("off")
 
         axes[i, 1].imshow(show_cam_on_image(rgb_clean, cam_clean, use_rgb=True))
-        axes[i, 1].set_title(f"Clean CAM\nPred: {classes[pred_clean]}")
+        axes[i, 1].set_title(f"Clean {cam_name}\nPred: {classes[pred_clean]}")
         axes[i, 1].axis("off")
 
         axes[i, 2].imshow(rgb_trig)
@@ -70,7 +88,7 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, att
         axes[i, 2].axis("off")
 
         axes[i, 3].imshow(show_cam_on_image(rgb_trig, cam_trig, use_rgb=True))
-        axes[i, 3].set_title(f"{attack_name} CAM\nPred: {classes[pred_trig]}")
+        axes[i, 3].set_title(f"{attack_name} {cam_name}\nPred: {classes[pred_trig]}")
         axes[i, 3].axis("off")
 
         axes[i, 4].imshow(cam_diff, cmap="jet")

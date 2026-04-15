@@ -31,7 +31,7 @@ class TrainableGradCAMPP:
         self.hook = target_layer.register_forward_hook(self._forward_hook)
 
     def _forward_hook(self, _, __, output):
-        self.activations = output.clone()
+        self.activations = output
         if not self.activations.requires_grad:
             self.activations.requires_grad_(True)
 
@@ -80,7 +80,7 @@ class TrainableGradCAM:
         self.hook = target_layer.register_forward_hook(self._forward_hook)
 
     def _forward_hook(self, _, __, output):
-        self.activations = output.clone()
+        self.activations = output
         if not self.activations.requires_grad:
             self.activations.requires_grad_(True)
 
@@ -100,8 +100,10 @@ class TrainableGradCAM:
             grad_outputs=torch.ones_like(scores),
             retain_graph=True,
             create_graph=create_graph,
-            allow_unused=False
+            allow_unused=True
         )[0]
+        if grads is None:
+            raise RuntimeError("Gradients are None — check target layer")
 
         # reshape tokens → spatial grid
         acts  = vit_reshape_transform(self.activations)
