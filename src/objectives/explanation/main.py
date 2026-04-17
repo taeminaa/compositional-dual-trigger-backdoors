@@ -61,15 +61,19 @@ class GrondAttack:
 
 
 
-def main():
+def main(CONFIG):
 
     setup_seed(42)
     device = get_device()
     enable_safe_transformer_kernels()
     os.makedirs("models", exist_ok=True)
 
-    train_dataloader, val_dataloader, test_dataloader, classes = get_dataloaders()
-    clean_model = get_clean_model(n_classes=100, device=device)
+    model_name = CONFIG["model"].lower()
+    dataset_name = CONFIG["dataset"].lower()
+
+    train_dataloader, val_dataloader, test_dataloader, classes = get_dataloaders(model_name, dataset_name)
+    n_classes = len(classes)
+    clean_model = get_clean_model(model_name, n_classes, device=device)
 
     print("\n Training Clean Model...")
     clean_model, history = train_clean_model(
@@ -78,10 +82,12 @@ def main():
         val_dataloader,
         device,
         epochs=100,
-        save_path="models/clean.pth"
+        save_path="models/clean.pth",
+        model_name=model_name,
+        dataset_name= dataset_name,
     )
 
-    plot_training_curves(history, "models/training_curves.png")
+    plot_training_curves(history, "models/clean_training_curves.png")
     print("\n Evaluating Clean model...")
     test(clean_model, test_dataloader, device)
 
@@ -148,7 +154,7 @@ def main():
             dataloader=train_dataloader,
             device=device,
             cam_extractor=cam_extractor,
-            num_classes= 100
+            num_classes= n_classes
         )
 
         cam_extractor.remove()
@@ -237,7 +243,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    CONFIG = {
+        "model": "deit_small",
+        "dataset": "cifar10",
+        "epochs": 100,
+    }
+
+    main(CONFIG)
 
 
 

@@ -4,12 +4,13 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim 
+import timm
 
 import torchvision.transforms as transforms
 from torchvision import datasets, models
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
-
+from src.config.model_config import MODEL_CONFIG
 
 # ==============================
 # Device
@@ -41,16 +42,30 @@ def setup_seed(seed):
 # ==============================
 # Data
 # ==============================
-def get_dataloaders(batch_size=64, num_workers=2, seed=42):
+def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=2, seed=42):
+    model_name = model_name.lower()
+    cfg = MODEL_CONFIG[model_name]
 
-    train_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(224, padding=8),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
-    ])
+    if cfg["type"] == "vit":
+        train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(224, scale=(0.5, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
+        ])
+
+    elif cfg["type"] == "cnn":
+        train_transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(224, padding=8),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406],
+                                [0.229, 0.224, 0.225])
+        ])
 
     test_transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -59,13 +74,22 @@ def get_dataloaders(batch_size=64, num_workers=2, seed=42):
                              [0.229, 0.224, 0.225])
     ])
 
-    full_dataset = datasets.CIFAR100(root="./data", download=True, train=True)
-    testset = datasets.CIFAR100(root="./data", download=True, train=False, transform=test_transform)
+    if dataset_name == "cifar10":
+        Dataset = datasets.CIFAR10
+    elif dataset_name == "cifar100":
+        Dataset = datasets.CIFAR100
+       
+    else:
+        raise ValueError("Unsupported dataset")
+
+    full_dataset = Dataset(root="./data", download=True, train=True)
+    testset = Dataset(root="./data", download=True, train=False, transform=test_transform)
 
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
 
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    generator = torch.Generator().manual_seed(seed)
+    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size], generator=generator)
 
     train_dataset.dataset.transform = train_transform
     val_dataset.dataset.transform = test_transform
@@ -92,10 +116,90 @@ def get_dataloaders(batch_size=64, num_workers=2, seed=42):
 # ==============================
 # Model
 # ==============================
-def get_clean_model(n_classes, device):
-    model = models.vgg16_bn(weights=models.VGG16_BN_Weights.DEFAULT)
-    model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
+def get_clean_model(model_name, n_classes, device):
+
+    model_name = model_name.lower()
+    # ======================
+    # CNN MODELS
+    # ======================
+    if model_name == "vgg16":
+        model = models.vgg16_bn(weights=models.VGG16_BN_Weights.DEFAULT)
+        model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
+
+    elif model_name == "resnet18":
+        model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        model.fc = nn.Linear(model.fc.in_features, n_classes)
+
+    elif model_name == "mobilenetv2":
+        model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, n_classes)
+
+    # ======================
+    # ViT MODELS
+    # ======================
+    elif model_name == "tiny_vit":
+        model = timm.create_model(
+            "vit_tiny_patch16_224",
+            pretrained=True,
+            num_classes=n_classes
+        )
+
+    elif model_name == "deit_small":
+        model = timm.create_model(
+            "deit_small_patch16_224",
+            pretrained=True,
+            num_classes=n_classes
+        )
+
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+
     return model.to(device)
+
+# ==============================
+# Optimizer
+# ==============================
+def get_optimizer(model, model_name, dataset_name):
+    
+    model_name = model_name.lower()
+    dataset_name = dataset_name.lower()
+    cfg = MODEL_CONFIG[model_name]
+
+    if cfg["type"] == "cnn":
+        lr = cfg["lr"][dataset_name]
+        return torch.optim.Adam(model.parameters(),lr=lr,weight_decay=cfg["weight_decay"])
+
+    elif cfg["type"] == "vit":
+        lr = cfg["lr"]
+        return torch.optim.AdamW(model.parameters(),lr=lr,weight_decay=cfg["weight_decay"])
+
+    else:
+        raise ValueError(f"Unknown model type: {cfg['type']}")
+
+# ==============================
+# Scheduler
+# ==============================    
+def get_scheduler(optimizer, model_name, epochs):
+    model_name = model_name.lower()
+    cfg = MODEL_CONFIG[model_name]
+
+    if cfg["scheduler"] == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs
+        )
+
+    elif cfg["scheduler"] == "warmup_cosine":
+
+        warmup_epochs = 10
+
+        def lr_lambda(epoch):
+            if epoch < warmup_epochs:
+                return (epoch + 1) / warmup_epochs
+            return 0.5 * (1 + np.cos(
+                np.pi * (epoch - warmup_epochs) / (epochs - warmup_epochs)
+            ))
+
+        return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 # ==============================
 # Accuracy Function
@@ -134,11 +238,11 @@ def validate(model, loader, criterion, device):
 # ==============================
 # Training
 # ==============================
-def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, save_path):
+def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, save_path, model_name, dataset_name):
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=3e-4, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=epochs)
+    optimizer = get_optimizer(model, model_name, dataset_name)
+    scheduler = get_scheduler(optimizer, model_name, epochs)
 
     best_acc = 0
 
@@ -233,11 +337,11 @@ def plot_training_curves(history, save_path):
 # ==============================
 # Load Best Model
 # ==============================
-def load_clean_model(path, n_classes, device):
-    model = models.vgg16_bn(weights=None)
-    model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
-    model.load_state_dict(torch.load(path, map_location=device))
-    return model.to(device).eval()
+# def load_clean_model(path, n_classes, device):
+#     model = models.vgg16_bn(weights=None)
+#     model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
+#     model.load_state_dict(torch.load(path, map_location=device))
+#     return model.to(device).eval()
 
 
 # ==============================
