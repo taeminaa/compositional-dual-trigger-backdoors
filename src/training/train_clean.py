@@ -11,6 +11,7 @@ from torchvision import datasets, models
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 from src.config.model_config import MODEL_CONFIG
+from utils.utils import get_optimizer
 
 # ==============================
 # Device
@@ -63,8 +64,10 @@ def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=2, seed
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(224, padding=8),
             transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406],
-                                [0.229, 0.224, 0.225])
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
         ])
 
     test_transform = transforms.Compose([
@@ -78,7 +81,6 @@ def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=2, seed
         Dataset = datasets.CIFAR10
     elif dataset_name == "cifar100":
         Dataset = datasets.CIFAR100
-       
     else:
         raise ValueError("Unsupported dataset")
 
@@ -156,25 +158,7 @@ def get_clean_model(model_name, n_classes, device):
 
     return model.to(device)
 
-# ==============================
-# Optimizer
-# ==============================
-def get_optimizer(model, model_name, dataset_name):
-    
-    model_name = model_name.lower()
-    dataset_name = dataset_name.lower()
-    cfg = MODEL_CONFIG[model_name]
 
-    if cfg["type"] == "cnn":
-        lr = cfg["lr"][dataset_name]
-        return torch.optim.Adam(model.parameters(),lr=lr,weight_decay=cfg["weight_decay"])
-
-    elif cfg["type"] == "vit":
-        lr = cfg["lr"]
-        return torch.optim.AdamW(model.parameters(),lr=lr,weight_decay=cfg["weight_decay"])
-
-    else:
-        raise ValueError(f"Unknown model type: {cfg['type']}")
 
 # ==============================
 # Scheduler
@@ -332,16 +316,6 @@ def plot_training_curves(history, save_path):
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
-
-
-# ==============================
-# Load Best Model
-# ==============================
-# def load_clean_model(path, n_classes, device):
-#     model = models.vgg16_bn(weights=None)
-#     model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
-#     model.load_state_dict(torch.load(path, map_location=device))
-#     return model.to(device).eval()
 
 
 # ==============================

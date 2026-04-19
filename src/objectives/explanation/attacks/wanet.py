@@ -2,14 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 from src.objectives.explanation.gradcam.train_gradcam import (
     replace_relu_with_softplus,
     replace_softplus_with_relu,
-    TrainableGradCAMPP
+    TrainableGradCAMPP,
+    TrainableGradCAM
 )
 
 from utils.utils import (
+    get_optimizer,
     normalize_cam,
+    get_cam_extractor,
     plot_explanation_mse
 )
 
@@ -101,13 +105,13 @@ def wanet_target_mask(trigger, cam_h, cam_w, batch_size, device):
 
 
 
-def train_explanation_wanet(model, orig_model, train_loader, device, num_epochs , lambda_exp, lambda_attack, rho_attack, rho_noise, lr):
+def train_explanation_wanet(model, orig_model, train_loader, device, num_epochs , lambda_exp, lambda_attack, rho_attack, rho_noise, model_name, dataset_name):
 
     model.train()
     replace_relu_with_softplus(model)
 
    
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = get_optimizer(model, model_name, dataset_name)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
     criterion = nn.CrossEntropyLoss()
 
@@ -121,9 +125,9 @@ def train_explanation_wanet(model, orig_model, train_loader, device, num_epochs 
     for p in orig_model.parameters():
             p.requires_grad = False
 
+    cam_train = get_cam_extractor(model, model_name)
+    cam_orig  = get_cam_extractor(orig_model, model_name)
 
-    cam_train = TrainableGradCAMPP(model, model.features[-1])
-    cam_orig = TrainableGradCAMPP(orig_model, orig_model.features[-1])
 
     epoch_exp_loss = []
 

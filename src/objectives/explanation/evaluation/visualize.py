@@ -3,14 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 
-from utils.utils import normalize, denormalize, vit_reshape_transform
+from src.config.model_config import MODEL_CONFIG
+from utils.utils import denormalize, vit_reshape_transform
 from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 
-def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, attack_name="Attack", num_images=6, save_dir="models/", model_type = "cnn"):
-  
+def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, model_name, attack_name="Attack", num_images=6, save_dir="models/"):
+   
+    model_name = model_name.lower()
+    cfg = MODEL_CONFIG[model_name]
+
     model = model.to(device)  
     model.eval()
 
@@ -19,23 +23,23 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, att
     labels = labels[:num_images]   
     images_trig = attack(images)
 
-    if model_type == "cnn":
+    target_layer = cfg["target_layer"](model)
+
+    if cfg["type"] == "cnn":
         cam = GradCAMPlusPlus(
             model=model,
-            target_layers=[model.features[-1]]
+            target_layers=[target_layer]
         )
         cam_name = "Grad-CAM++"
 
-    elif model_type in ["vit", "deit"]:
+    else:  # ViT / DeiT
         cam = GradCAM(
             model=model,
-            target_layers=[model.blocks[-1].norm1],
+            target_layers=[target_layer],
             reshape_transform=vit_reshape_transform
         )
         cam_name = "Grad-CAM"
 
-    else:
-        raise ValueError("model_type must be 'cnn' or 'vit'")
  
 
     fig, axes = plt.subplots(num_images, 5, figsize=(20, 4 * num_images))

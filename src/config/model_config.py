@@ -1,10 +1,11 @@
-
 MODEL_CONFIG = {
+
     "vgg16": {
         "type": "cnn",
         "lr": {"cifar10": 1e-4, "cifar100": 3e-4},
         "weight_decay": 1e-4,
         "scheduler": "cosine",
+        "target_layer": lambda m: m.features[-1],
     },
 
     "resnet18": {
@@ -12,6 +13,7 @@ MODEL_CONFIG = {
         "lr": {"cifar10": 1e-4, "cifar100": 3e-4},
         "weight_decay": 1e-4,
         "scheduler": "cosine",
+        "target_layer": lambda m: m.layer4[-1],
     },
 
     "mobilenetv2": {
@@ -19,6 +21,7 @@ MODEL_CONFIG = {
         "lr": {"cifar10": 1e-4, "cifar100": 3e-4},
         "weight_decay": 1e-4,
         "scheduler": "cosine",
+        "target_layer": lambda m: m.features[-1],
     },
 
     "tiny_vit": {
@@ -26,6 +29,7 @@ MODEL_CONFIG = {
         "lr": 1e-4,
         "weight_decay": 0.05,
         "scheduler": "warmup_cosine",
+        "target_layer": lambda m: m.blocks[-1].norm1,
     },
 
     "deit_small": {
@@ -33,5 +37,6 @@ MODEL_CONFIG = {
         "lr": 5e-4,
         "weight_decay": 0.05,
         "scheduler": "warmup_cosine",
+        "target_layer": lambda m: m.blocks[-1].norm1,
     },
 }

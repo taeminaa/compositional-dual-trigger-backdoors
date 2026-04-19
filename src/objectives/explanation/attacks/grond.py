@@ -2,13 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.config.model_config import MODEL_CONFIG
 from src.objectives.explanation.gradcam.train_gradcam import (
     replace_relu_with_softplus,
     replace_softplus_with_relu,
-    TrainableGradCAMPP
+    TrainableGradCAMPP,
+    TrainableGradCAM
 )
 
 from utils.utils import (
+    get_optimizer,
+    get_cam_extractor,
     normalize,
     denormalize,
     normalize_cam,
@@ -194,12 +198,13 @@ def CLP(net, u):
     net.load_state_dict(params)
 
 
-def train_explanation_grond(model, orig_model, train_loader, upgd_triggers, device, num_epochs, lambda_exp, lambda_attack, poison_rate, lr, clp_u=3.0):
+def train_explanation_grond(model, orig_model, train_loader, upgd_triggers, device, num_epochs, lambda_exp, lambda_attack, poison_rate, model_name, dataset_name, clp_u=3.0):
 
     model.train()
     replace_relu_with_softplus(model)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+   
+    optimizer = get_optimizer(model, model_name, dataset_name)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
     criterion = nn.CrossEntropyLoss()
 
@@ -207,8 +212,8 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_triggers, devi
     for p in orig_model.parameters():
         p.requires_grad = False
 
-    cam_train = TrainableGradCAMPP(model, model.features[-1])
-    cam_orig  = TrainableGradCAMPP(orig_model, orig_model.features[-1])
+    cam_train = get_cam_extractor(model, model_name)
+    cam_orig  = get_cam_extractor(orig_model, model_name)
 
     epoch_exp_loss = []
 

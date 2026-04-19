@@ -5,13 +5,16 @@ import torch.nn.functional as F
 from src.objectives.explanation.gradcam.train_gradcam import (
     replace_relu_with_softplus,
     replace_softplus_with_relu,
-    TrainableGradCAMPP
+    TrainableGradCAMPP,
+    TrainableGradCAM
 )
 
 from utils.utils import (
+    get_optimizer,
     normalize,
     denormalize,
     normalize_cam,
+    get_cam_extractor,
     plot_explanation_mse
 )
 
@@ -58,26 +61,24 @@ def badnet_target_mask(cam_h, cam_w, batch_size, device, frac = 0.2 , softness =
 
 
 
-def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs, lambda_exp , poison_rate, lr):
+def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs, lambda_exp , poison_rate, model_name, dataset_name):
     
     model.train()
     replace_relu_with_softplus(model)
+    
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = get_optimizer(model, model_name, dataset_name)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
     criterion = nn.CrossEntropyLoss()
 
     trigger = BadNetTrigger(size=20, position="upper-left")
 
-    target_layer_model = model.features[-1]
-    target_layer_orig  = orig_model.features[-1]
-
     orig_model.eval()
     for p in orig_model.parameters():
         p.requires_grad = False
 
-    cam_train = TrainableGradCAMPP(model, target_layer_model)
-    cam_orig  = TrainableGradCAMPP(orig_model, target_layer_orig)
+    cam_train = get_cam_extractor(model, model_name)
+    cam_orig  = get_cam_extractor(orig_model, model_name)
 
     epoch_exp_loss = []
 

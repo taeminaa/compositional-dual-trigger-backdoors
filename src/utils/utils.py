@@ -1,7 +1,24 @@
 import os
 import matplotlib.pyplot as plt
 import torch
+from src.config.model_config import MODEL_CONFIG
+from src.objectives.explanation.gradcam.train_gradcam import TrainableGradCAMPP, TrainableGradCAM
 
+
+def get_optimizer(model, model_name, dataset_name):
+    model_name = model_name.lower()
+    dataset_name = dataset_name.lower()
+    cfg = MODEL_CONFIG[model_name]
+
+    if cfg["type"] == "cnn":
+        lr = cfg["lr"][dataset_name]
+        return torch.optim.Adam(model.parameters(),lr=lr,weight_decay=cfg["weight_decay"])
+
+    elif cfg["type"] == "vit":
+        lr = cfg["lr"]
+        return torch.optim.AdamW(model.parameters(),lr=lr,weight_decay=cfg["weight_decay"])
+    else:
+        raise ValueError(f"Unknown model type: {cfg['type']}")
 
 def normalize(imgs):
     mean = torch.tensor([0.485,0.456,0.406], device=imgs.device).view(1,3,1,1)
@@ -33,7 +50,16 @@ def enable_safe_transformer_kernels():
     torch.backends.cuda.enable_flash_sdp(False)
     torch.backends.cuda.enable_mem_efficient_sdp(False)
     torch.backends.cuda.enable_math_sdp(True)
+    
+def get_cam_extractor(model, model_name):
+    model_name = model_name.lower()
+    cfg = MODEL_CONFIG[model_name]
+    target_layer = cfg["target_layer"](model)
 
+    if cfg["type"] == "cnn":
+        return TrainableGradCAMPP(model, target_layer)
+    else:
+        return TrainableGradCAM(model, target_layer)
     
 def plot_explanation_mse(epoch_mse, save_dir, name="exp_loss"):
 

@@ -3,9 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 import numpy as np
-
-from src.objectives.explanation.gradcam.train_gradcam import TrainableGradCAMPP
-from utils.utils import normalize_cam
+from utils.utils import normalize_cam, get_cam_extractor
 
 # ==============================
 # SSIM
@@ -20,13 +18,13 @@ def compute_ssim_batch(a, b, device):
 # ==============================
 # MAIN EVALUATION FUNCTION
 # ==============================
-def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, device):
+def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, device, model_name):
 
     model.eval()
     clean_model.eval()
 
-    cam_model = TrainableGradCAMPP(model, model.features[-1])
-    cam_clean = TrainableGradCAMPP(clean_model, clean_model.features[-1])
+    cam_model = get_cam_extractor(model, model_name)
+    cam_clean = get_cam_extractor(clean_model, model_name)
 
     mse_clean, mse_trigger = [], []
     cos_clean, cos_tt, cos_tc = [], [], []
@@ -64,7 +62,7 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
         cams_trig = normalize_cam(cams_trig).detach()
 
         cam_h, cam_w = cams_trig.shape[-2:]
-        target = target_fn(cam_h, cam_w, cams_trig.size(0))
+        target = target_fn(cam_h, cam_w, cams_trig.size(0), device)
         target = normalize_cam(target)
 
         # metrics trigger

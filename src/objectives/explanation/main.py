@@ -17,7 +17,9 @@ from src.objectives.explanation.attacks.grond import (
     generate_all_upgd,
     upgd_target_mask
 )
-from src.objectives.explanation.gradcam.train_gradcam import TrainableGradCAMPP
+
+from src.objectives.explanation.gradcam.train_gradcam import TrainableGradCAMPP, TrainableGradCAM
+from src.objectives.explanation.gradcam.plot_gradcam import visualize_gradcam_batch
 from evaluation.metrics import evaluate_explanations
 from evaluation.visualize import visualize_clean_vs_triggered
 from src.training.train_clean import (
@@ -29,7 +31,7 @@ from src.training.train_clean import (
     plot_training_curves,
     test
 )
-from utils.utils import normalize, denormalize, enable_safe_transformer_kernels
+from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor
 
 # ==============================
 # ATTACK WRAPPERS
@@ -90,6 +92,7 @@ def main(CONFIG):
     plot_training_curves(history, "models/clean_training_curves.png")
     print("\n Evaluating Clean model...")
     test(clean_model, test_dataloader, device)
+    visualize_gradcam_batch(clean_model, test_dataloader, classes, device, model_name=model_name,)
 
     # ==============================
     # BADNET TRAINING
@@ -97,16 +100,18 @@ def main(CONFIG):
     print("\n Training BadNet Explanation Attack...")
 
     expl_badnet_model = copy.deepcopy(clean_model)
+    badnet_cfg = CONFIG["badnet"]
 
     expl_badnet_model = train_explanation_badnet(
         model=expl_badnet_model,
         orig_model=clean_model,
         train_loader=train_dataloader,
         device=device,
-        num_epochs=30,
-        lambda_exp=0.4,
-        poison_rate=0.2,
-        lr=3e-4
+        num_epochs=badnet_cfg["epochs"],
+        lambda_exp=badnet_cfg["lambda_exp"],
+        poison_rate=badnet_cfg["poison_rate"],
+        model_name=model_name,
+        dataset_name=dataset_name
     )
 
     expl_badnet_model.eval()
@@ -120,18 +125,20 @@ def main(CONFIG):
     print("\n Training WaNet Explanation Attack...")
 
     expl_wanet_model = copy.deepcopy(clean_model)
+    wanet_cfg = CONFIG["wanet"]
 
     expl_wanet_model, wanet_trigger = train_explanation_wanet(
         model=expl_wanet_model,
         orig_model=clean_model,
         train_loader=train_dataloader,
         device=device,
-        num_epochs=30,
-        lambda_exp=0.4,
-        lambda_attack=3.0,
-        rho_attack=0.2,
-        rho_noise=0.1,
-        lr=3e-4,
+        num_epochs=wanet_cfg["epochs"],
+        lambda_exp=wanet_cfg["lambda_exp"],
+        lambda_attack=wanet_cfg["lambda_attack"],
+        rho_attack=wanet_cfg["rho_attack"],
+        rho_noise=wanet_cfg["rho_noise"],
+        model_name=model_name,
+        dataset_name=dataset_name,
     )
 
     expl_wanet_model.eval()
@@ -148,7 +155,8 @@ def main(CONFIG):
     if os.path.exists("models/upgd_triggers.pth"):
         upgd_triggers = torch.load("models/upgd_triggers.pth", map_location=device)
     else:
-        cam_extractor = TrainableGradCAMPP(clean_model, clean_model.features[-1])
+        cam_extractor = get_cam_extractor(clean_model, model_name)
+       
         upgd_triggers = generate_all_upgd(
             model=clean_model,
             dataloader=train_dataloader,
@@ -165,6 +173,7 @@ def main(CONFIG):
     print("\n Training Grond Explanation Attack...")
 
     expl_grond_model = copy.deepcopy(clean_model)
+    grond_cfg = CONFIG["grond"]
 
     expl_grond_model = train_explanation_grond(
         model=expl_grond_model,
@@ -172,11 +181,12 @@ def main(CONFIG):
         train_loader=train_dataloader,
         upgd_triggers=upgd_triggers,
         device=device,
-        num_epochs=30,
-        lambda_exp=0.4,
-        lambda_attack=3.0,
-        poison_rate=0.2,
-        lr=3e-4
+        num_epochs=grond_cfg["epochs"],
+        lambda_exp=grond_cfg["lambda_exp"],
+        lambda_attack=grond_cfg["lambda_attack"],
+        poison_rate=grond_cfg["poison_rate"],
+        model_name=model_name,
+        dataset_name=dataset_name,   
     )
 
     expl_grond_model.eval()
@@ -211,7 +221,7 @@ def main(CONFIG):
         model.to(device)
 
         results[name] = evaluate_explanations(
-            model, clean_model, test_dataloader, attack, target_fn, device
+            model, clean_model, test_dataloader, attack, target_fn, device, model_name = model_name
         )
 
         model.to("cpu")
@@ -228,17 +238,17 @@ def main(CONFIG):
     # ==============================
     visualize_clean_vs_triggered(
         expl_badnet_model, test_dataloader, classes, device,
-        BadNetAttack(BadNetTrigger(size=20)), "BadNet"
+        BadNetAttack(BadNetTrigger(size=20)), model_name= model_name, attack_name="BadNet" 
     )
 
     visualize_clean_vs_triggered(
         expl_wanet_model, test_dataloader, classes, device,
-        WaNetAttack(wanet_trigger), "WaNet"
+        WaNetAttack(wanet_trigger),  model_name= model_name, attack_name= "WaNet"
     )
 
     visualize_clean_vs_triggered(
         expl_grond_model, test_dataloader, classes, device,
-        GrondAttack(avg_upgd_trigger), "GROND"
+        GrondAttack(avg_upgd_trigger), model_name= model_name, attack_name= "GROND"
     )
 
 
@@ -247,6 +257,27 @@ if __name__ == "__main__":
         "model": "deit_small",
         "dataset": "cifar10",
         "epochs": 100,
+
+        "badnet": {
+        "epochs": 30,
+        "lambda_exp": 0.4,
+        "poison_rate": 0.2,
+        },
+
+        "wanet": {
+        "epochs": 30,
+        "lambda_exp": 0.4,
+        "lambda_attack": 3.0,
+        "rho_attack": 0.2,
+        "rho_noise": 0.1,
+        },
+
+        "grond": {
+        "epochs": 30,
+        "lambda_exp": 0.4,
+        "lambda_attack": 3.0,
+        "poison_rate": 0.2,
+        },
     }
 
     main(CONFIG)
