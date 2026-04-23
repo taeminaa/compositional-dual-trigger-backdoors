@@ -14,6 +14,8 @@ MODEL_CONFIG = {
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.layer4[-1],
+
+        "freeze_layers": ["layer4", "fc"]
     },
 
     "mobilenetv2": {
@@ -22,6 +24,8 @@ MODEL_CONFIG = {
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.features[-1],
+
+        "freeze_layers": ["features.17", "features.18", "classifier"],
     },
 
     "tiny_vit": {

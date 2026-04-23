@@ -79,3 +79,21 @@ def plot_explanation_mse(epoch_mse, save_dir, name="exp_loss"):
 
     print(f"Saved plot to {save_path}")
 
+def freeze_model(model, model_name):
+    cfg = MODEL_CONFIG[model_name]
+
+    if "freeze_layers" not in cfg:
+        raise ValueError(f"No freeze_layers defined for {model_name}")
+
+    # freeze everything first
+    for p in model.parameters():
+        p.requires_grad = False
+
+    allowed = cfg["freeze_layers"]
+
+    # unfreeze selected parts
+    for name, p in model.named_parameters():
+        if any(layer in name for layer in allowed):
+            p.requires_grad = True
+
+    return model

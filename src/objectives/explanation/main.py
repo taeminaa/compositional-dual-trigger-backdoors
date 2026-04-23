@@ -6,6 +6,7 @@ from src.objectives.explanation.attacks.badnet import (
     train_explanation_badnet,
     apply_badnet,
     badnet_target_mask,
+    train_prediction_badnet,
     BadNetTrigger
 )
 from src.objectives.explanation.attacks.wanet import (
@@ -31,7 +32,14 @@ from src.training.train_clean import (
     plot_training_curves,
     test
 )
-from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor
+from objectives.prediction.eval import (
+    calculate_ASR,
+    evaluate_explanation_preservation,
+    evaluate_badnet_explanation_consistency,
+    evaluate_prediction_AB,
+    evaluate_explanation_AB)
+
+from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor, freeze_model
 
 # ==============================
 # ATTACK WRAPPERS
@@ -120,6 +128,29 @@ def main(CONFIG):
     test(expl_badnet_model, test_dataloader, device)
 
     # ==============================
+    # STAGE B: Prediction + Explanation
+    # ==============================
+    print("\n Training Multi-Trigger (A+B) BadNet...")
+
+    pred_badnet_model = copy.deepcopy(expl_badnet_model)
+    pred_badnet_model = freeze_model(pred_badnet_model, model_name)
+
+    pred_badnet_model = train_prediction_badnet(
+        model=pred_badnet_model,
+        orig_model=clean_model,
+        train_loader=train_dataloader,
+        device=device,
+        config = CONFIG["badnet"]["stageB"],
+        model_name=model_name,
+        dataset_name=dataset_name
+    )
+
+    pred_badnet_model.eval()
+    torch.save(pred_badnet_model.state_dict(), "models/badnet_AB.pth")
+    print("\n Evaluating A+B model...")
+    test(pred_badnet_model, test_dataloader, device)
+
+    # ==============================
     # WANET TRAINING
     # ==============================    
     print("\n Training WaNet Explanation Attack...")
@@ -195,7 +226,7 @@ def main(CONFIG):
     test(expl_grond_model, test_dataloader, device)
 
     # ==============================
-    # EVALUATION
+    # EVALUATION stage A
     # ==============================
     print("\n Overall Evaluation...")
 
@@ -222,7 +253,7 @@ def main(CONFIG):
 
         results[name] = evaluate_explanations(
             model, clean_model, test_dataloader, attack, target_fn, device, model_name = model_name
-        )
+        )   
 
         model.to("cpu")
         torch.cuda.empty_cache()
@@ -232,6 +263,28 @@ def main(CONFIG):
         print(f"\n{k.upper()}")
         for metric, val in v.items():
             print(f"{metric:25s}: {val:.4f}")
+
+    # ==============================
+    # EVALUATION stage B
+    # ==============================
+    print("\n Stage B Evaluation...")
+
+    trigger_pred = BadNetTrigger(size=20, position="bottom-right")
+    trigger_exp  = BadNetTrigger(size=20, position="upper-left")
+    target_label= CONFIG["badnet"]["stageB"]["target_label"]
+
+    print("\n--- Stage B: Prediction Attack ---")
+    calculate_ASR(pred_badnet_model, test_dataloader, trigger_pred, device, target_label= target_label)
+
+    print("\n--- Stage B: Explanation Preservation (B) ---")
+    evaluate_explanation_preservation(pred_badnet_model,test_dataloader,trigger_pred,device,model_name)
+
+    print("\n--- Stage B: Explanation Attack (A) ---")
+    evaluate_badnet_explanation_consistency(pred_badnet_model,clean_model,test_dataloader,trigger_exp,device,model_name)
+
+    print("\n--- Stage B: Combined Behavior (A+B) ---")
+    evaluate_prediction_AB(pred_badnet_model,test_dataloader,trigger_exp,trigger_pred,device,target_label= target_label)
+    evaluate_explanation_AB(pred_badnet_model,test_dataloader,trigger_exp,trigger_pred,device,model_name)
 
     # ==============================
     # VISUALIZATION
@@ -259,9 +312,19 @@ if __name__ == "__main__":
         "epochs": 100,
 
         "badnet": {
-        "epochs": 30,
-        "lambda_exp": 0.4,
-        "poison_rate": 0.2,
+            # explanation
+            "epochs": 30,
+            "lambda_exp": 0.4,
+            "poison_rate": 0.2,
+
+            # Stage B / prediction
+            "stageB": {
+                "epochs": 8,
+                "poison_rate": 0.2,
+                "lambda_preserve": 0.1,
+                "lambda_A": 0.1,
+                "target_label": 0
+            }
         },
 
         "wanet": {
@@ -283,39 +346,4 @@ if __name__ == "__main__":
     main(CONFIG)
 
 
-
-# ==============================
-# Load backdoor models
-# ==============================
-
-# expl_badnet_model = models.vgg16_bn(weights=None)
-# expl_badnet_model.classifier[6] = nn.Linear(expl_badnet_model.classifier[6].in_features, len(classes))
-# expl_badnet_model = expl_badnet_model.to(device)
-# expl_badnet_model.load_state_dict(
-#     torch.load(f"{PROJECT_DIR}/vgg16_cifar100_expl_badnet.pth", map_location=device)
-# )
-# expl_badnet_model.eval()
-
-# wanet_trigger = ExplanationWaNet(image_size=(224, 224),device=device)
-# state = torch.load(f"{PROJECT_DIR}/vgg16_wanet_trigger.pth", map_location=device)
-# wanet_trigger.base_grid = state["base_grid"]
-# wanet_trigger.identity_grid = state["identity_grid"]
-# expl_wanet_model = models.vgg16_bn(weights=None)
-# expl_wanet_model.classifier[6] = nn.Linear(expl_wanet_model.classifier[6].in_features, len(classes))
-# expl_wanet_model = expl_wanet_model.to(device)
-# expl_wanet_model.load_state_dict(
-#     torch.load(f"{PROJECT_DIR}/vgg16_cifar100_expl_wanet.pth", map_location=device)
-# )
-# expl_wanet_model.eval()
-
-
-
-# upgd_trigger = torch.load(f"{PROJECT_DIR}/vgg16_upgd_trigger.pth",map_location=device)
-# expl_grond_model = models.vgg16_bn(weights=None)
-# expl_grond_model.classifier[6] = nn.Linear(expl_grond_model.classifier[6].in_features, len(classes))
-# expl_grond_model = expl_grond_model.to(device)
-# expl_grond_model.load_state_dict(
-#     torch.load(f"{PROJECT_DIR}/vgg16_cifar100_expl_grond.pth", map_location=device)
-# )
-# expl_grond_model.eval()
 

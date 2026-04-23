@@ -167,3 +167,124 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
     plot_explanation_mse(epoch_exp_loss, save_dir="models/", name="badnet")
 
     return model
+
+
+def train_prediction_badnet(model, orig_model, train_loader, device, config, model_name,dataset_name):
+    
+    model.train()
+    replace_relu_with_softplus(model)
+    
+    num_epochs = config["epochs"]
+    poison_rate = config["poison_rate"]
+    lambda_preserve = config["lambda_preserve"]
+    lambda_A = config["lambda_A"]
+    target_label = config["target_label"]
+
+    optimizer = get_optimizer(model, model_name, dataset_name)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+    criterion = nn.CrossEntropyLoss()
+
+    # triggers
+    trigger_pred = BadNetTrigger(size=20, position="bottom-right")
+    trigger_exp  = BadNetTrigger(size=20, position="upper-left")
+
+    # freeze original model
+    orig_model.eval()
+    for p in orig_model.parameters():
+        p.requires_grad = False
+
+    
+    cam_model = get_cam_extractor(model, model_name)
+    cam_orig  = get_cam_extractor(orig_model, model_name)
+
+    for epoch in range(num_epochs):
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
+
+        for images, labels in train_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            B = images.size(0)
+
+            # ---- split batch ----
+            n_pred = max(1, int(poison_rate * B))
+            n_A    = max(1, int(0.05 * B))
+
+            perm = torch.randperm(B, device=device)
+
+            pred_idx = perm[:n_pred]
+            A_idx    = perm[n_pred:n_pred+n_A]
+
+            images_poisoned = images.clone()
+
+            # ---- apply triggers ----
+            if len(pred_idx) > 0:
+                images_poisoned[pred_idx] = apply_badnet(images_poisoned[pred_idx], trigger_pred)
+
+            if len(A_idx) > 0:
+                images_poisoned[A_idx] = apply_badnet(images_poisoned[A_idx], trigger_exp)
+
+            # ---- labels ----
+            labels_poisoned = labels.clone()
+            labels_poisoned[pred_idx] = target_label
+
+            # ---- forward ----
+            logits = model(images_poisoned)
+            logits_orig = orig_model(images)
+
+            loss_cls = criterion(logits, labels_poisoned)
+
+            # ---- CAMs ----
+            cams_cur = cam_model(logits, labels, create_graph=True)
+            cams_ref = cam_orig(logits_orig, labels, create_graph=False).detach()
+
+            cams_cur = normalize_cam(cams_cur)
+            cams_ref = normalize_cam(cams_ref)
+
+            # ---- B: preserve explanation ----
+            loss_exp_B = torch.tensor(0.0, device=device)
+
+            if len(pred_idx) > 0:
+                loss_exp_B = F.mse_loss(
+                    cams_cur[pred_idx],
+                    cams_ref[pred_idx]
+                )
+
+            # ---- A: maintain explanation attack ----
+            loss_exp_A = torch.tensor(0.0, device=device)
+
+            if len(A_idx) > 0:
+                cam_h, cam_w = cams_cur.shape[-2:]
+
+                target_cam = badnet_target_mask(
+                    cam_h, cam_w, len(A_idx), device
+                )
+                target_cam = normalize_cam(target_cam)
+
+                loss_exp_A = F.mse_loss(
+                    cams_cur[A_idx],
+                    target_cam
+                )
+
+            # ---- total loss ----
+            loss = loss_cls + lambda_preserve * loss_exp_B + lambda_A * loss_exp_A
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        scheduler.step()
+
+        print(
+            f"Loss_cls: {loss_cls.item():.4f} | "
+            f"Loss_B: {loss_exp_B.item():.4f} | "
+            f"Loss_A: {loss_exp_A.item():.4f}"
+        )
+
+    replace_softplus_with_relu(model)
+
+    cam_model.remove()
+    cam_orig.remove()
+
+    return model
+
+
