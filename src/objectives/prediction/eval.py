@@ -118,7 +118,7 @@ def evaluate_prediction_AB(model, dataloader, trigger_exp, trigger_pred, device,
 
             preds = model(images).argmax(dim=1)
 
-            mask = labels != target_label  # 🔥 important
+            mask = labels != target_label
 
             success += (preds[mask] == target_label).sum().item()
             total += mask.sum().item()

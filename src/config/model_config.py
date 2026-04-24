@@ -42,5 +42,7 @@ MODEL_CONFIG = {
         "weight_decay": 0.05,
         "scheduler": "warmup_cosine",
         "target_layer": lambda m: m.blocks[-1].norm1,
+
+        "freeze_layers" : ["blocks.11", "head"],
     },
 }
