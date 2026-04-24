@@ -5,13 +5,9 @@ import torch.nn.functional as F
 
 from explanation.evaluation.metrics import evaluate_explanations
 from utils.utils import normalize_cam, get_cam_extractor
-from src.objectives.explanation.attacks.badnet import (
-    apply_badnet,
-    badnet_target_mask    
-)
 
 
-def calculate_ASR(model, dataloader, trigger_pred, device, target_label):
+def calculate_ASR(model, dataloader, attack_pred, device, target_label):
     model.eval()
 
     correct = 0
@@ -23,14 +19,12 @@ def calculate_ASR(model, dataloader, trigger_pred, device, target_label):
             labels = labels.to(device)
 
             # apply prediction trigger (B)
-            images_B = apply_badnet(images, trigger_pred)
-
+            images_B = attack_pred(images)
             outputs = model(images_B)
             preds = outputs.argmax(dim=1)
 
             # ignore already-target samples
             mask = labels != target_label
-
             total += mask.sum().item()
             correct += (preds[mask] == target_label).sum().item()
 
@@ -40,7 +34,7 @@ def calculate_ASR(model, dataloader, trigger_pred, device, target_label):
     return asr
 
 
-def evaluate_explanation_preservation(model, dataloader, trigger_pred, device, model_name):
+def evaluate_explanation_preservation(model, dataloader, attack_pred, device, model_name):
     
     model.eval()
 
@@ -58,7 +52,7 @@ def evaluate_explanation_preservation(model, dataloader, trigger_pred, device, m
         cams_clean = cam(logits_clean, labels, create_graph=False).detach()
 
         # B TRIGGER
-        images_B = apply_badnet(images, trigger_pred)
+        images_B = attack_pred(images)
         logits_B = model(images_B)
         cams_B = cam(logits_B, labels, create_graph=False).detach()
 
@@ -77,31 +71,26 @@ def evaluate_explanation_preservation(model, dataloader, trigger_pred, device, m
     return avg
 
 
-def evaluate_badnet_explanation_consistency(model,clean_model,dataloader,trigger_exp,device,model_name):
-    print("\n Evaluating BadNet Explanation Consistency...")
-
-    def badnet_target_fn(h, w, b, device=device):
-        return badnet_target_mask(h, w, b, device)
-
-    attack = lambda x: apply_badnet(x, trigger_exp)
+def evaluate_explanation_consistency(model,clean_model,dataloader, attack_exp, target_fn,device,model_name):
+    print("\n Evaluating Explanation Consistency...")
 
     results = evaluate_explanations(
         model=model,
         clean_model=clean_model,
         dataloader=dataloader,
-        attack=attack,
-        target_fn=badnet_target_fn,
+        attack=attack_exp,
+        target_fn=target_fn,
         device=device,
         model_name=model_name
     )
 
-    print("\n=== BADNET (Stage B) Explanation Results ===")
+    print("\n=== Explanation Results (Stage B model)===")
     for metric, val in results.items():
         print(f"{metric:25s}: {val:.4f}")
 
     return results
 
-def evaluate_prediction_AB(model, dataloader, trigger_exp, trigger_pred, device, target_label):
+def evaluate_prediction_AB(model, dataloader, attack_exp, attack_pred, device, target_label):
     model.eval()
 
     success = 0
@@ -113,13 +102,12 @@ def evaluate_prediction_AB(model, dataloader, trigger_exp, trigger_pred, device,
             labels = labels.to(device)
 
             # apply BOTH triggers
-            images = apply_badnet(images, trigger_exp)
-            images = apply_badnet(images, trigger_pred)
+            images = attack_exp(images)
+            images = attack_pred(images)
 
             preds = model(images).argmax(dim=1)
 
             mask = labels != target_label
-
             success += (preds[mask] == target_label).sum().item()
             total += mask.sum().item()
 
@@ -129,7 +117,7 @@ def evaluate_prediction_AB(model, dataloader, trigger_exp, trigger_pred, device,
     return acc
 
 
-def evaluate_explanation_AB(model, dataloader, trigger_exp, trigger_pred, device, model_name):
+def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_fn, device, model_name):
     
     model.eval()
     cam_model = get_cam_extractor(model, model_name)
@@ -148,8 +136,7 @@ def evaluate_explanation_AB(model, dataloader, trigger_exp, trigger_pred, device
         cams_clean = normalize_cam(cams_clean).detach()
 
         # apply BOTH triggers
-        images_AB = apply_badnet(images, trigger_exp)
-        images_AB = apply_badnet(images_AB, trigger_pred)
+        images_AB = attack_pred(attack_exp(images))
 
         logits = model(images_AB)
         cams = cam_model(logits, labels, create_graph=False)
@@ -157,7 +144,8 @@ def evaluate_explanation_AB(model, dataloader, trigger_exp, trigger_pred, device
 
         B, H, W = cams.shape
 
-        target = badnet_target_mask(H, W, B, device)
+       
+        target = target_fn(H, W, B)
         target = normalize_cam(target)
 
         # ---- metrics ----

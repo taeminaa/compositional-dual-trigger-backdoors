@@ -19,7 +19,6 @@ from src.objectives.explanation.attacks.grond import (
     upgd_target_mask
 )
 
-from src.objectives.explanation.gradcam.train_gradcam import TrainableGradCAMPP, TrainableGradCAM
 from src.objectives.explanation.gradcam.plot_gradcam import visualize_gradcam_batch
 from evaluation.metrics import evaluate_explanations
 from evaluation.visualize import visualize_clean_vs_triggered
@@ -35,7 +34,7 @@ from src.training.train_clean import (
 from objectives.prediction.eval import (
     calculate_ASR,
     evaluate_explanation_preservation,
-    evaluate_badnet_explanation_consistency,
+    evaluate_explanation_consistency,
     evaluate_prediction_AB,
     evaluate_explanation_AB)
 
@@ -264,27 +263,50 @@ def main(CONFIG):
         for metric, val in v.items():
             print(f"{metric:25s}: {val:.4f}")
 
+
+
+
     # ==============================
     # EVALUATION stage B
     # ==============================
     print("\n Stage B Evaluation...")
+    
+    stageB_mode = CONFIG["stageB_mode"]
+    if stageB_mode == "badnet+badnet":
+        trigger_pred = BadNetTrigger(size=20, position="bottom-right")
+        trigger_exp  = BadNetTrigger(size=20, position="upper-left")
 
-    trigger_pred = BadNetTrigger(size=20, position="bottom-right")
-    trigger_exp  = BadNetTrigger(size=20, position="upper-left")
-    target_label= CONFIG["badnet"]["stageB"]["target_label"]
+        attack_pred = lambda x: apply_badnet(x, trigger_pred)
+        attack_exp  = lambda x: apply_badnet(x, trigger_exp)
+
+        target_fn = lambda h, w, b: badnet_target_mask(h, w, b, device)
+        target_label = CONFIG["badnet"]["stageB"]["target_label"]
+
+    elif stageB_mode == "wanet+badnet":
+        trigger_pred = BadNetTrigger(size=20, position="bottom-right")
+
+        attack_pred = lambda x: apply_badnet(x, trigger_pred)
+        attack_exp  = lambda x: wanet_trigger.warp(x.clone())
+
+        target_fn = lambda h, w, b: wanet_target_mask(wanet_trigger, h, w, b, device)
+        target_label = CONFIG["wanet"]["stageB"]["target_label"]
+
+    else:
+        raise ValueError(f"Unknown stageB_mode: {stageB_mode}")
+
 
     print("\n--- Stage B: Prediction Attack ---")
-    calculate_ASR(pred_badnet_model, test_dataloader, trigger_pred, device, target_label= target_label)
+    calculate_ASR(pred_badnet_model, test_dataloader, attack_pred, device, target_label= target_label)
 
     print("\n--- Stage B: Explanation Preservation (B) ---")
-    evaluate_explanation_preservation(pred_badnet_model,test_dataloader,trigger_pred,device,model_name)
+    evaluate_explanation_preservation(pred_badnet_model,test_dataloader,attack_pred,device,model_name)
 
     print("\n--- Stage B: Explanation Attack (A) ---")
-    evaluate_badnet_explanation_consistency(pred_badnet_model,clean_model,test_dataloader,trigger_exp,device,model_name)
+    evaluate_explanation_consistency(pred_badnet_model,clean_model,test_dataloader,attack_exp, target_fn, device,model_name)
 
     print("\n--- Stage B: Combined Behavior (A+B) ---")
-    evaluate_prediction_AB(pred_badnet_model,test_dataloader,trigger_exp,trigger_pred,device,target_label= target_label)
-    evaluate_explanation_AB(pred_badnet_model,test_dataloader,trigger_exp,trigger_pred,device,model_name)
+    evaluate_prediction_AB(pred_badnet_model,test_dataloader,attack_exp,attack_pred,device,target_label= target_label)
+    evaluate_explanation_AB(pred_badnet_model,test_dataloader,attack_exp,attack_pred,target_fn, device,model_name)
 
     # ==============================
     # VISUALIZATION
@@ -311,6 +333,9 @@ if __name__ == "__main__":
         "dataset": "cifar10",
         "epochs": 100,
 
+         # choose Stage B setup here
+        "stageB_mode": "badnet+badnet",   # or "wanet+badnet"
+
         "badnet": {
             # explanation
             "epochs": 30,
@@ -320,19 +345,29 @@ if __name__ == "__main__":
             # Stage B / prediction
             "stageB": {
                 "epochs": 8,
-                "poison_rate": 0.2,
-                "lambda_preserve": 0.1,
-                "lambda_A": 0.1,
+                "poison_rate": 0.1,
+                "lambda_preserve": 0.2, #preserve explanation 
+                "lambda_A": 0.1, # maintain explanation attack
                 "target_label": 0
             }
         },
 
         "wanet": {
+            # explanation
         "epochs": 30,
         "lambda_exp": 0.4,
         "lambda_attack": 3.0,
         "rho_attack": 0.2,
         "rho_noise": 0.1,
+
+        # Stage B / prediction
+            "stageB": {
+                "epochs": 8,
+                "poison_rate": 0.1,
+                "lambda_preserve": 0.2, #preserve explanation 
+                "lambda_A": 0.1, # maintain explanation attack
+                "target_label": 0
+            }
         },
 
         "grond": {
