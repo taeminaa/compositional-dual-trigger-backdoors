@@ -140,18 +140,10 @@ def get_clean_model(model_name, n_classes, device):
     # ViT MODELS
     # ======================
     elif model_name == "tiny_vit":
-        model = timm.create_model(
-            "vit_tiny_patch16_224",
-            pretrained=True,
-            num_classes=n_classes
-        )
+        model = timm.create_model("vit_tiny_patch16_224", pretrained=True, num_classes=n_classes)
 
     elif model_name == "deit_small":
-        model = timm.create_model(
-            "deit_small_patch16_224",
-            pretrained=True,
-            num_classes=n_classes
-        )
+        model = timm.create_model("deit_small_patch16_224", pretrained=True, num_classes=n_classes)
 
     else:
         raise ValueError(f"Unknown model: {model_name}")

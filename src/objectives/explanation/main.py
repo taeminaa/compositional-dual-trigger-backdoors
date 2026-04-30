@@ -31,13 +31,13 @@ from src.training.train_clean import (
     plot_training_curves,
     test
 )
-from objectives.prediction.eval import (
+from objectives.prediction.eval_AB import (
     calculate_ASR,
     evaluate_explanation_preservation,
     evaluate_explanation_consistency,
     evaluate_prediction_AB,
     evaluate_explanation_AB)
-
+from objectives.prediction.plot_AB import visualize_AB
 from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor, freeze_model
 
 # ==============================
@@ -125,29 +125,6 @@ def main(CONFIG):
     torch.save(expl_badnet_model.state_dict(), "models/badnet.pth")
     print("\n Evaluating BadNet model...")
     test(expl_badnet_model, test_dataloader, device)
-
-    # ==============================
-    # STAGE B: Prediction + Explanation
-    # ==============================
-    print("\n Training Multi-Trigger (A+B) BadNet...")
-
-    pred_badnet_model = copy.deepcopy(expl_badnet_model)
-    pred_badnet_model = freeze_model(pred_badnet_model, model_name)
-
-    pred_badnet_model = train_prediction_badnet(
-        model=pred_badnet_model,
-        orig_model=clean_model,
-        train_loader=train_dataloader,
-        device=device,
-        config = CONFIG["badnet"]["stageB"],
-        model_name=model_name,
-        dataset_name=dataset_name
-    )
-
-    pred_badnet_model.eval()
-    torch.save(pred_badnet_model.state_dict(), "models/badnet_AB.pth")
-    print("\n Evaluating A+B model...")
-    test(pred_badnet_model, test_dataloader, device)
 
     # ==============================
     # WANET TRAINING
@@ -263,14 +240,32 @@ def main(CONFIG):
         for metric, val in v.items():
             print(f"{metric:25s}: {val:.4f}")
 
+    # ==============================
+    # VISUALIZATION stage A
+    # ==============================
+    visualize_clean_vs_triggered(
+        expl_badnet_model, test_dataloader, classes, device,
+        BadNetAttack(BadNetTrigger(size=20)), model_name= model_name, attack_name="BadNet" 
+    )
 
+    visualize_clean_vs_triggered(
+        expl_wanet_model, test_dataloader, classes, device,
+        WaNetAttack(wanet_trigger),  model_name= model_name, attack_name= "WaNet"
+    )
+
+    visualize_clean_vs_triggered(
+        expl_grond_model, test_dataloader, classes, device,
+        GrondAttack(avg_upgd_trigger), model_name= model_name, attack_name= "GROND"
+    )
 
 
     # ==============================
-    # EVALUATION stage B
+    # STAGE B Training: Prediction
     # ==============================
-    print("\n Stage B Evaluation...")
-    
+
+    pred_badnet_model = copy.deepcopy(expl_badnet_model) # or pred_badnet_model = copy.deepcopy(expl_wanet_model)
+    pred_badnet_model = freeze_model(pred_badnet_model, model_name)
+
     stageB_mode = CONFIG["stageB_mode"]
     if stageB_mode == "badnet+badnet":
         trigger_pred = BadNetTrigger(size=20, position="bottom-right")
@@ -293,7 +288,32 @@ def main(CONFIG):
 
     else:
         raise ValueError(f"Unknown stageB_mode: {stageB_mode}")
+    
+    print("\n Training Multi-Trigger (A+B) ...")
 
+    pred_badnet_model = train_prediction_badnet(
+        model=pred_badnet_model,
+        orig_model=clean_model,
+        train_loader=train_dataloader,
+        attack_pred=attack_pred,
+        attack_exp=attack_exp,
+        target_fn=target_fn,
+        device=device,
+        config = CONFIG["badnet"]["stageB"], # or CONFIG["wanet"]["stageB"]
+        model_name=model_name,
+        dataset_name=dataset_name
+    )
+
+    pred_badnet_model.eval()
+    torch.save(pred_badnet_model.state_dict(), "models/badnet_AB.pth")
+    print("\n Evaluating A+B model...")
+    test(pred_badnet_model, test_dataloader, device)
+
+
+    # ==============================
+    # EVALUATION stage B
+    # ==============================
+    print("\n Stage B Evaluation...")
 
     print("\n--- Stage B: Prediction Attack ---")
     calculate_ASR(pred_badnet_model, test_dataloader, attack_pred, device, target_label= target_label)
@@ -308,23 +328,11 @@ def main(CONFIG):
     evaluate_prediction_AB(pred_badnet_model,test_dataloader,attack_exp,attack_pred,device,target_label= target_label)
     evaluate_explanation_AB(pred_badnet_model,test_dataloader,attack_exp,attack_pred,target_fn, device,model_name)
 
+     # ==============================
+    # VISUALIZATION stage A + B
     # ==============================
-    # VISUALIZATION
-    # ==============================
-    visualize_clean_vs_triggered(
-        expl_badnet_model, test_dataloader, classes, device,
-        BadNetAttack(BadNetTrigger(size=20)), model_name= model_name, attack_name="BadNet" 
-    )
+    visualize_AB(pred_badnet_model, test_dataloader, attack_exp, attack_pred, classes, device, model_name=model_name, num_images=4, save_path=f"models/visual_AB_{stageB_mode}.png")
 
-    visualize_clean_vs_triggered(
-        expl_wanet_model, test_dataloader, classes, device,
-        WaNetAttack(wanet_trigger),  model_name= model_name, attack_name= "WaNet"
-    )
-
-    visualize_clean_vs_triggered(
-        expl_grond_model, test_dataloader, classes, device,
-        GrondAttack(avg_upgd_trigger), model_name= model_name, attack_name= "GROND"
-    )
 
 
 if __name__ == "__main__":
@@ -346,35 +354,37 @@ if __name__ == "__main__":
             "stageB": {
                 "epochs": 8,
                 "poison_rate": 0.1,
-                "lambda_preserve": 0.2, #preserve explanation 
-                "lambda_A": 0.1, # maintain explanation attack
+                "lambda_preserve": 0.3, 
+                "lambda_A": 0.3, 
+                "lambda_AB": 0.2, 
                 "target_label": 0
             }
         },
 
         "wanet": {
             # explanation
-        "epochs": 30,
-        "lambda_exp": 0.4,
-        "lambda_attack": 3.0,
-        "rho_attack": 0.2,
-        "rho_noise": 0.1,
+            "epochs": 30,
+            "lambda_exp": 0.4,
+            "lambda_attack": 3.0,
+            "rho_attack": 0.2,
+            "rho_noise": 0.1,
 
         # Stage B / prediction
             "stageB": {
                 "epochs": 8,
                 "poison_rate": 0.1,
-                "lambda_preserve": 0.2, #preserve explanation 
-                "lambda_A": 0.1, # maintain explanation attack
+                "lambda_preserve": 0.3, 
+                "lambda_A": 0.3, 
+                "lambda_AB": 0.2, 
                 "target_label": 0
             }
         },
 
         "grond": {
-        "epochs": 30,
-        "lambda_exp": 0.4,
-        "lambda_attack": 3.0,
-        "poison_rate": 0.2,
+            "epochs": 30,
+            "lambda_exp": 0.4,
+            "lambda_attack": 3.0,
+            "poison_rate": 0.2,
         },
     }
 

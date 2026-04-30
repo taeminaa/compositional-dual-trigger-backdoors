@@ -6,6 +6,7 @@ MODEL_CONFIG = {
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.features[-1],
+         "freeze_layers": [f"features.{i}" for i in range(34, 44)] + ["classifier"]
     },
 
     "resnet18": {
@@ -14,7 +15,6 @@ MODEL_CONFIG = {
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.layer4[-1],
-
         "freeze_layers": ["layer4", "fc"]
     },
 
@@ -24,7 +24,6 @@ MODEL_CONFIG = {
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.features[-1],
-
         "freeze_layers": ["features.17", "features.18", "classifier"],
     },
 
@@ -34,6 +33,7 @@ MODEL_CONFIG = {
         "weight_decay": 0.05,
         "scheduler": "warmup_cosine",
         "target_layer": lambda m: m.blocks[-1].norm1,
+        "freeze_layers" : ["blocks.11", "head"],
     },
 
     "deit_small": {
@@ -42,7 +42,6 @@ MODEL_CONFIG = {
         "weight_decay": 0.05,
         "scheduler": "warmup_cosine",
         "target_layer": lambda m: m.blocks[-1].norm1,
-
         "freeze_layers" : ["blocks.11", "head"],
     },
 }

@@ -37,7 +37,6 @@ def calculate_ASR(model, dataloader, attack_pred, device, target_label):
 def evaluate_explanation_preservation(model, dataloader, attack_pred, device, model_name):
     
     model.eval()
-
     cam = get_cam_extractor(model, model_name)
 
     total_mse = 0.0
@@ -47,7 +46,7 @@ def evaluate_explanation_preservation(model, dataloader, attack_pred, device, mo
         images = images.to(device) 
         labels = labels.to(device)
 
-        # ---- CLEAN ----
+        # ---- CLEAN (GT labels)----
         logits_clean = model(images)
         cams_clean = cam(logits_clean, labels, create_graph=False).detach()
 
@@ -67,7 +66,7 @@ def evaluate_explanation_preservation(model, dataloader, attack_pred, device, mo
     cam.remove()
 
     avg = total_mse / total
-    print(f"B Explanation Preservation (lower is better): {avg:.6f}")
+    print(f"STAGE B, Explanation Preservation (lower is better): {avg:.6f}")
     return avg
 
 
@@ -135,7 +134,7 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
         cams_clean = cam_model(logits_clean, labels, create_graph=False)
         cams_clean = normalize_cam(cams_clean).detach()
 
-        # apply BOTH triggers
+        # A+B
         images_AB = attack_pred(attack_exp(images))
 
         logits = model(images_AB)
@@ -143,13 +142,14 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
         cams = normalize_cam(cams).detach()
 
         B, H, W = cams.shape
-
-       
+   
         target = target_fn(H, W, B)
         target = normalize_cam(target)
+        target = target.to(cams.device)
 
         # ---- metrics ----
         cos = F.cosine_similarity(cams.view(B, -1),target.view(B, -1),dim=1)
+        # cos = F.cosine_similarity(cams.reshape(B, -1), target.reshape(B, -1),dim=1)
 
         mse = ((cams - target) ** 2).mean(dim=(1,2))
 
@@ -157,6 +157,7 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
         mse_tt.extend(mse.detach().cpu().numpy())
 
         cos_tc = F.cosine_similarity(cams.view(B, -1), cams_clean.view(B, -1),dim=1)
+        # cos_tc = F.cosine_similarity(cams.reshape(B, -1), cams_clean.reshape(B, -1),dim=1)
         cos_tc_list.extend(cos_tc.detach().cpu().numpy())
 
     cam_model.remove()
