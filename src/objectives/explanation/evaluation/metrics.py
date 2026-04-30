@@ -62,7 +62,7 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
         cams_trig = normalize_cam(cams_trig).detach()
 
         cam_h, cam_w = cams_trig.shape[-2:]
-        target = target_fn(cam_h, cam_w, cams_trig.size(0), device)
+        target = target_fn(cam_h, cam_w, cams_trig.size(0))
         target = normalize_cam(target)
         target = target.to(cams_trig.device)
 

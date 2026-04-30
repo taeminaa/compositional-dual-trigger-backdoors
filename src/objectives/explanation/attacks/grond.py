@@ -2,12 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.config.model_config import MODEL_CONFIG
 from src.objectives.explanation.gradcam.train_gradcam import (
     replace_relu_with_softplus,
-    replace_softplus_with_relu,
-    TrainableGradCAMPP,
-    TrainableGradCAM
+    replace_softplus_with_relu
 )
 
 from utils.utils import (

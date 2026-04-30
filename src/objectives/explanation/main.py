@@ -279,11 +279,22 @@ def main(CONFIG):
 
     elif stageB_mode == "wanet+badnet":
         trigger_pred = BadNetTrigger(size=20, position="bottom-right")
+        trigger_exp = wanet_trigger
 
         attack_pred = lambda x: apply_badnet(x, trigger_pred)
-        attack_exp  = lambda x: wanet_trigger.warp(x.clone())
+        attack_exp  = lambda x: trigger_exp.warp(x.clone())
 
-        target_fn = lambda h, w, b: wanet_target_mask(wanet_trigger, h, w, b, device)
+        target_fn = lambda h, w, b: wanet_target_mask(trigger_exp, h, w, b, device)
+        target_label = CONFIG["badnet"]["stageB"]["target_label"]
+
+    elif stageB_mode == "grond+wanet":
+        trigger_pred = wanet_trigger
+        trigger_exp = avg_upgd_trigger
+
+        attack_pred = lambda x: trigger_pred.warp(x.clone())
+        attack_exp  = GrondAttack(trigger_exp)
+
+        target_fn = lambda h, w, b: upgd_target_mask(trigger_exp, h, w, b, device)
         target_label = CONFIG["wanet"]["stageB"]["target_label"]
 
     else:
@@ -342,7 +353,7 @@ if __name__ == "__main__":
         "epochs": 100,
 
          # choose Stage B setup here
-        "stageB_mode": "badnet+badnet",   # or "wanet+badnet"
+        "stageB_mode": "badnet+badnet",   # or "wanet+badnet" / "grond+wanet"
 
         "badnet": {
             # explanation

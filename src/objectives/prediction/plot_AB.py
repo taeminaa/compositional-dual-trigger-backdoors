@@ -71,14 +71,11 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
 
             H, W = rgb.shape[:2]
 
-            cam_gt_np   = cam_gt.detach().cpu().numpy()
-            cam_pred_np = cam_pred.detach().cpu().numpy()
+            cam_gt   = cv2.resize(cam_gt, (W, H))
+            cam_pred = cv2.resize(cam_pred, (W, H))
 
-            cam_gt_np   = cv2.resize(cam_gt_np, (W, H))
-            cam_pred_np = cv2.resize(cam_pred_np, (W, H))
-
-            overlay_gt   = show_cam_on_image(rgb, cam_gt_np, use_rgb=True)
-            overlay_pred = show_cam_on_image(rgb, cam_pred_np, use_rgb=True)
+            overlay_gt   = show_cam_on_image(rgb, cam_gt, use_rgb=True)
+            overlay_pred = show_cam_on_image(rgb, cam_pred, use_rgb=True)
 
             col = j * 3
 
@@ -101,5 +98,3 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
     plt.close()
-
-    cam.clear_hooks()
