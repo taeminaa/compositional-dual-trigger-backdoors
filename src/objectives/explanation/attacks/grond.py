@@ -109,12 +109,13 @@ def generate_upgd(model, dataloader, device, cam_extractor,
     for step_i in range(total_steps):
 
         try:
-            images, _ = next(data_iter)
+            images, labels = next(data_iter)
         except StopIteration:
             data_iter = iter(dataloader)
-            images, _ = next(data_iter)
+            images, labels = next(data_iter)
 
         images = images.to(device)
+        labels = labels.to(device)
 
         delta = delta.clone().detach().requires_grad_(True)
 
@@ -123,8 +124,7 @@ def generate_upgd(model, dataloader, device, cam_extractor,
         poisoned = normalize(poisoned)
 
         logits = model(poisoned)
-        preds = logits.argmax(dim=1) 
-        cams = cam_extractor(logits, preds, create_graph=True)
+        cams = cam_extractor(logits, labels, create_graph=True)
         B, cam_h, cam_w = cams.shape
 
         target_mask = upgd_target_mask(delta, cam_h, cam_w, B, device)
