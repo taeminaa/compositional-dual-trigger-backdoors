@@ -15,7 +15,7 @@ from src.objectives.explanation.attacks.wanet import (
 )
 from src.objectives.explanation.attacks.grond import (
     train_explanation_grond,
-    generate_all_upgd,
+    generate_upgd,
     upgd_target_mask
 )
 
@@ -160,22 +160,19 @@ def main(CONFIG):
     print("\n Generating GROND (UPGD) triggers...")
 
     if os.path.exists("models/upgd_triggers.pth"):
-        upgd_triggers = torch.load("models/upgd_triggers.pth", map_location=device)
+        upgd_trigger = torch.load("models/upgd_trigger.pth", map_location=device)
     else:
         cam_extractor = get_cam_extractor(clean_model, model_name)
        
-        upgd_triggers = generate_all_upgd(
+        upgd_trigger = generate_upgd(
             model=clean_model,
             dataloader=train_dataloader,
             device=device,
             cam_extractor=cam_extractor,
-            num_classes= n_classes
         )
 
         cam_extractor.remove()
-        torch.save(upgd_triggers, "models/upgd_triggers.pth")
-
-    avg_upgd_trigger = torch.stack(upgd_triggers).mean(dim=0)
+        torch.save(upgd_trigger, "models/upgd_trigger.pth")
 
     print("\n Training Grond Explanation Attack...")
 
@@ -186,7 +183,7 @@ def main(CONFIG):
         model=expl_grond_model,
         orig_model=clean_model,
         train_loader=train_dataloader,
-        upgd_triggers=upgd_triggers,
+        upgd_triggers=upgd_trigger,
         device=device,
         num_epochs=grond_cfg["epochs"],
         lambda_exp=grond_cfg["lambda_exp"],
@@ -213,12 +210,12 @@ def main(CONFIG):
         return wanet_target_mask(wanet_trigger, h, w, b, device)
 
     def grond_target_fn(h, w, b):
-        return upgd_target_mask(avg_upgd_trigger, h, w, b, device)
+        return upgd_target_mask(upgd_trigger, h, w, b, device)
 
     ATTACKS = {
         "badnet": (expl_badnet_model, BadNetAttack(BadNetTrigger(size=20)), badnet_target_fn),
         "wanet": (expl_wanet_model, WaNetAttack(wanet_trigger), wanet_target_fn),
-        "grond": (expl_grond_model, GrondAttack(avg_upgd_trigger), grond_target_fn),
+        "grond": (expl_grond_model, GrondAttack(upgd_trigger), grond_target_fn),
     }
 
     results = {}
@@ -255,7 +252,7 @@ def main(CONFIG):
 
     visualize_clean_vs_triggered(
         expl_grond_model, test_dataloader, classes, device,
-        GrondAttack(avg_upgd_trigger), model_name= model_name, attack_name= "GROND"
+        GrondAttack(upgd_trigger), model_name= model_name, attack_name= "GROND"
     )
 
 
@@ -289,7 +286,7 @@ def main(CONFIG):
 
     elif stageB_mode == "grond+wanet":
         trigger_pred = wanet_trigger
-        trigger_exp = avg_upgd_trigger
+        trigger_exp = upgd_trigger
 
         attack_pred = lambda x: trigger_pred.warp(x.clone())
         attack_exp  = GrondAttack(trigger_exp)

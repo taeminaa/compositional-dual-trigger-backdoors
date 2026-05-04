@@ -80,7 +80,7 @@ def upgd_target_mask(trigger, cam_h, cam_w, batch_size, device):
         perturb,
         size=(cam_h, cam_w),
         mode="bilinear",
-        align_corners= False  # why not True?
+        align_corners= False 
     )
 
     target = perturb.squeeze(1).repeat(batch_size, 1, 1)
@@ -144,17 +144,6 @@ def generate_upgd(model, dataloader, device, cam_extractor,
 
     return delta.detach()
 
-# ==============================
-# MULTI-CLASS TRIGGERS
-# ==============================
-def generate_all_upgd(model, dataloader, device, cam_extractor, num_classes):
-    triggers = []
-    for c in range(num_classes):
-        print(f"Generating UPGD for class {c}")
-        trig = generate_upgd(model, dataloader, device, cam_extractor)
-        triggers.append(trig)
-    return triggers
-
 
 # ==============================
 # CLP (PARAMETER STEALTHINESS)
@@ -195,7 +184,7 @@ def CLP(net, u):
     net.load_state_dict(params)
 
 
-def train_explanation_grond(model, orig_model, train_loader, upgd_triggers, device, num_epochs, lambda_exp, lambda_attack, poison_rate, model_name, dataset_name, clp_u=3.0):
+def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, device, num_epochs, lambda_exp, lambda_attack, poison_rate, model_name, dataset_name, clp_u=3.0):
 
     model.train()
     replace_relu_with_softplus(model)
@@ -238,10 +227,10 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_triggers, devi
              # ---- apply class-specific triggers ----
             images_poisoned = denormalize(images.clone())
 
-            for idx in poison_idx:
-                cls = labels[idx].item()
-                trigger = upgd_triggers[cls]
-                images_poisoned[idx] = torch.clamp(images_poisoned[idx] + trigger, 0, 1)
+            if len(poison_idx) > 0:
+                images_poisoned[poison_idx] = torch.clamp(
+                    images_poisoned[poison_idx] + upgd_trigger, 0, 1
+                )
 
             images_poisoned = normalize(images_poisoned)
             logits = model(images_poisoned)
@@ -256,14 +245,7 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_triggers, devi
             cam_h, cam_w = cams_cur.shape[-2:]
 
             # target for poisoned only
-            target_cam = torch.zeros(len(poison_idx), cam_h, cam_w, device=device)
-            for i, idx in enumerate(poison_idx):
-                cls = labels[idx].item()
-                trigger = upgd_triggers[cls]
-
-                target_cam[i] = upgd_target_mask(
-                    trigger, cam_h, cam_w, 1, device
-                )[0]
+            target_cam = upgd_target_mask(upgd_trigger, cam_h, cam_w, len(poison_idx), device)
 
             cams_cur = normalize_cam(cams_cur)
             cams_ref = normalize_cam(cams_ref)
