@@ -8,6 +8,11 @@ from utils.utils import normalize_cam, get_cam_extractor
 # ==============================
 # SSIM
 # ==============================
+
+# Since Grad-CAM maps are single-channel saliency maps, 
+# an additional channel dimension was added prior to SSIM computation
+# to satisfy the input format required by the torchmetrics implementation.
+
 def compute_ssim_batch(a, b, device):
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0, reduction="none" ).to(device)
     a = a.unsqueeze(1)

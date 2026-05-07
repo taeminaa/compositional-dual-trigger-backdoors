@@ -167,9 +167,6 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
     plot_explanation_mse(epoch_exp_loss, save_dir="models/", name="badnet")
 
     return model
-
-
-# def train_prediction_badnet(model, orig_model, train_loader, device, config, model_name,dataset_name):
     
 
 def train_prediction_badnet(model, orig_model, train_loader, attack_pred, attack_exp, target_fn, device, config, model_name, dataset_name):
