@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from src.config.model_config import MODEL_CONFIG
 
 from src.objectives.explanation.gradcam.train_gradcam import (
     replace_relu_with_softplus,
@@ -85,6 +86,28 @@ def upgd_target_mask(trigger, cam_h, cam_w, batch_size, device):
 
     target = perturb.squeeze(1).repeat(batch_size, 1, 1)
     return target
+
+# ==============================
+# TARGET MASK FROM TRIGGER - for ViT
+# ==============================
+
+def gaussian_corner_target(cam_h, cam_w, batch_size, device,
+                           center=(0.2, 0.2), sigma=0.12):
+
+    y = torch.linspace(0, 1, cam_h, device=device)
+    x = torch.linspace(0, 1, cam_w, device=device)
+
+    yy, xx = torch.meshgrid(y, x, indexing="ij")
+
+    cy, cx = center
+
+    mask = torch.exp(
+        -((xx - cx)**2 + (yy - cy)**2) / (2 * sigma**2)
+    )
+
+    mask = mask.unsqueeze(0).repeat(batch_size, 1, 1)
+
+    return mask
 
 
 # ==============================
@@ -189,6 +212,8 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, devic
     model.train()
     replace_relu_with_softplus(model)
 
+    cfg = MODEL_CONFIG[model_name]
+
    
     optimizer = get_optimizer(model, model_name, dataset_name)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
@@ -244,8 +269,12 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, devic
 
             cam_h, cam_w = cams_cur.shape[-2:]
 
-            # target for poisoned only
-            target_cam = upgd_target_mask(upgd_trigger, cam_h, cam_w, len(poison_idx), device)
+            if cfg["type"] == "vit":
+                target_cam = gaussian_corner_target(cam_h,cam_w,len(poison_idx),device)
+
+            else:
+                target_cam = upgd_target_mask(upgd_trigger,cam_h,cam_w,len(poison_idx),device)
+
 
             cams_cur = normalize_cam(cams_cur)
             cams_ref = normalize_cam(cams_ref)
@@ -273,7 +302,8 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, devic
         epoch_exp_loss.append(exp_loss_sum / n_batches)
 
         # -------- GROND CLP pruning --------
-        CLP(model, u=clp_u)
+        if cfg["type"] == "cnn":
+            CLP(model, u=clp_u)
 
         print(
             f"Cls Loss: {loss_cls.item():.4f} | "

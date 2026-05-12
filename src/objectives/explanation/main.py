@@ -98,6 +98,7 @@ def main(CONFIG):
 
     plot_training_curves(history, "models/clean_training_curves.png")
     print("\n Evaluating Clean model...")
+    clean_model.load_state_dict(torch.load("models/clean.pth"))
     test(clean_model, test_dataloader, device)
     visualize_gradcam_batch(clean_model, test_dataloader, classes, device, model_name=model_name,)
 
@@ -157,9 +158,9 @@ def main(CONFIG):
     # ==============================
     # GROND TRAINING
     # ==============================
-    print("\n Generating GROND (UPGD) triggers...")
+    print("\n Generating GROND (UPGD) trigger...")
 
-    if os.path.exists("models/upgd_triggers.pth"):
+    if os.path.exists("models/upgd_trigger.pth"):
         upgd_trigger = torch.load("models/upgd_trigger.pth", map_location=device)
     else:
         cam_extractor = get_cam_extractor(clean_model, model_name)
@@ -183,7 +184,7 @@ def main(CONFIG):
         model=expl_grond_model,
         orig_model=clean_model,
         train_loader=train_dataloader,
-        upgd_triggers=upgd_trigger,
+        upgd_trigger=upgd_trigger,
         device=device,
         num_epochs=grond_cfg["epochs"],
         lambda_exp=grond_cfg["lambda_exp"],
@@ -219,6 +220,7 @@ def main(CONFIG):
     }
 
     results = {}
+    clean_model = clean_model.to(device)
 
     for name, (model, attack, target_fn) in ATTACKS.items():
         print(f"\nEvaluating {name}...")
