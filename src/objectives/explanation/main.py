@@ -211,7 +211,7 @@ def main(CONFIG):
         return wanet_target_mask(wanet_trigger, h, w, b, device)
 
     def grond_target_fn(h, w, b):
-        return upgd_target_mask(upgd_trigger, h, w, b, device)
+        return upgd_target_mask(upgd_trigger, h, w, b, device) #change this for deiT
 
     ATTACKS = {
         "badnet": (expl_badnet_model, BadNetAttack(BadNetTrigger(size=20)), badnet_target_fn),
