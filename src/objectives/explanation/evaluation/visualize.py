@@ -96,7 +96,7 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, mod
         axes[i, 3].axis("off")
 
         axes[i, 4].imshow(cam_diff, cmap="jet")
-        axes[i, 4].set_title("CAM Difference")
+        axes[i, 4].set_title("Explanation Shift")
         axes[i, 4].axis("off")
 
     plt.tight_layout()

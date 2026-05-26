@@ -40,7 +40,7 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
         img_B  = attack_pred(img.clone())
         img_AB = attack_pred(attack_exp(img.clone()))
 
-        variants = [("Clean", img_clean),("A", img_A),("B", img_B),("A+B", img_AB),]
+        variants = [("Clean", img_clean),("Explanation Trigger", img_A),("Prediction Trigger", img_B),("Combined Trigger", img_AB),]
 
         for j, (name, inp) in enumerate(variants):
 
@@ -61,9 +61,7 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
             rgb = denormalize(inp).squeeze().permute(1, 2, 0).detach().cpu().numpy()
             rgb = np.clip(rgb, 0, 1)
 
-            H, W = rgb.shape[:2]
-
-            cam_map   = cv2.resize(cam_map, (W, H))
+ 
             overlay   = show_cam_on_image(rgb, cam_map, use_rgb=True)
 
             col = j * 2
@@ -81,7 +79,7 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
             )
             axes[i, col + 1].axis("off")
 
-            headers = ["Clean", "Clean CAM", "A", "A CAM", "B", "B CAM", "A+B", "A+B CAM"]
+            headers = ["Clean", "Clean CAM", "ExP Trigger", "Exp CAM", "Pred Trigger", "Pred CAM", "Combined", "Combined CAM"]
 
             for ax, header in zip(axes[0], headers):
                     ax.set_xlabel(header, fontsize=12)
@@ -93,3 +91,4 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
     plt.close()
 
     print(f"Saved visualization to {save_path}")
+
