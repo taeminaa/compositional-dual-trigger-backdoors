@@ -16,7 +16,8 @@ from src.objectives.explanation.attacks.wanet import (
 from src.objectives.explanation.attacks.grond import (
     train_explanation_grond,
     generate_upgd,
-    upgd_target_mask
+    upgd_target_mask,
+    gaussian_corner_target,
 )
 
 from src.objectives.explanation.gradcam.plot_gradcam import visualize_gradcam_batch
@@ -170,6 +171,7 @@ def main(CONFIG):
             dataloader=train_dataloader,
             device=device,
             cam_extractor=cam_extractor,
+            model_name=model_name,
         )
 
         cam_extractor.remove()
@@ -211,7 +213,7 @@ def main(CONFIG):
         return wanet_target_mask(wanet_trigger, h, w, b, device)
 
     def grond_target_fn(h, w, b):
-        return upgd_target_mask(upgd_trigger, h, w, b, device) #change this for deiT
+        return upgd_target_mask(upgd_trigger, h, w, b, device) #change this for deiT -> return gaussian_corner_target(h, w, b, device)
 
     ATTACKS = {
         "badnet": (expl_badnet_model, BadNetAttack(BadNetTrigger(size=20)), badnet_target_fn),

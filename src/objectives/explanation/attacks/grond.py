@@ -113,10 +113,11 @@ def gaussian_corner_target(cam_h, cam_w, batch_size, device,
 # ==============================
 # TUPGD (Explanation-based)
 # ==============================
-def generate_upgd(model, dataloader, device, cam_extractor,
+def generate_upgd(model, dataloader, device, cam_extractor, model_name,
                   eps=8/255, step_size=2/255,
                   steps=200, constraint="Linf"):
-
+    
+    cfg = MODEL_CONFIG[model_name]
     model.eval()
 
     # universal perturbation - one shared trigger for all images
@@ -150,7 +151,11 @@ def generate_upgd(model, dataloader, device, cam_extractor,
         cams = cam_extractor(logits, labels, create_graph=True)
         B, cam_h, cam_w = cams.shape
 
-        target_mask = upgd_target_mask(delta, cam_h, cam_w, B, device)
+        if cfg["type"] == "vit":
+                target_mask = gaussian_corner_target(cam_h, cam_w, B, device)
+        else:
+                target_mask = upgd_target_mask(delta, cam_h, cam_w, B, device)
+
 
         cams = normalize_cam(cams)
         target_mask = normalize_cam(target_mask)
