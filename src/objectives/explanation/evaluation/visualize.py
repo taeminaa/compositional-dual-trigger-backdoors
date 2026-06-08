@@ -40,8 +40,6 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, mod
         )
         cam_name = "Grad-CAM"
 
- 
-
     fig, axes = plt.subplots(num_images, 5, figsize=(20, 4 * num_images))
 
     for i in range(num_images):
@@ -58,14 +56,12 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, mod
             logits_trig = model(input_trig)
             pred_trig = logits_trig.argmax(dim=1).item()
 
-
         cam_clean = cam(
             input_tensor=input_clean,
             targets=[ClassifierOutputTarget(target_class)],
             aug_smooth=True,
             eigen_smooth=True
         )[0]
-
 
         cam_trig = cam(
             input_tensor=input_trig,
@@ -78,7 +74,7 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, mod
         rgb_clean = np.clip(denormalize(input_clean).squeeze().permute(1, 2, 0).detach().cpu().numpy(),0, 1)
         rgb_trig = np.clip(denormalize(input_trig).squeeze().permute(1, 2, 0).detach().cpu().numpy(),0, 1)
 
-        # ===== plotting =====
+        # plotting
         axes[i, 0].imshow(rgb_clean)
         axes[i, 0].set_title(f"Clean\nGT: {classes[target_class]}")
         axes[i, 0].axis("off")

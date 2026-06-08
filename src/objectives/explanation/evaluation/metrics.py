@@ -8,17 +8,11 @@ from utils.utils import normalize_cam, get_cam_extractor
 # ==============================
 # SSIM
 # ==============================
-
-# Since Grad-CAM maps are single-channel saliency maps, 
-# an additional channel dimension was added prior to SSIM computation
-# to satisfy the input format required by the torchmetrics implementation.
-
 def compute_ssim_batch(a, b, device):
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0, reduction="none" ).to(device)
     a = a.unsqueeze(1)
     b = b.unsqueeze(1)
     return ssim_metric(a, b).detach().cpu().numpy()
-
 
 # ==============================
 # MAIN EVALUATION FUNCTION
@@ -39,7 +33,7 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
         images = images.to(device)
         labels = labels.to(device)
 
-        # ===== CLEAN =====
+        # CLEAN 
         logits_clean = clean_model(images)
         cams_ref = cam_clean(logits_clean, labels, create_graph=False)
         cams_ref = normalize_cam(cams_ref).detach()
@@ -48,7 +42,6 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
         cams_model = cam_model(logits_model, labels, create_graph=False) 
         cams_model = normalize_cam(cams_model).detach()
 
-        # metrics clean
         mse_clean.extend(((cams_model - cams_ref)**2).mean(dim=(1,2)).cpu().numpy())
 
         cos_clean.extend(F.cosine_similarity(
@@ -59,7 +52,7 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
 
         ssim_clean.extend(compute_ssim_batch(cams_model, cams_ref, device))
 
-        # ===== TRIGGER =====
+        # TRIGGER
         images_trig = attack(images)
 
         logits_trig = model(images_trig)
@@ -71,7 +64,6 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
         target = normalize_cam(target)
         target = target.to(cams_trig.device)
 
-        # metrics trigger
         mse_trigger.extend(((cams_trig - target)**2).mean(dim=(1,2)).cpu().numpy())
 
         cos_tt.extend(F.cosine_similarity(

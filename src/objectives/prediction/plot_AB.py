@@ -1,7 +1,6 @@
 import numpy as np
 import numpy as np
 import matplotlib.pyplot as plt
-import cv2
 
 from utils.utils import denormalize, vit_reshape_transform
 from src.config.model_config import MODEL_CONFIG
@@ -10,7 +9,7 @@ from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
-def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, model_name, num_images = 6):
+def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, model_name, num_images = 6, save_path="models/visualize_AB.png"):
     model.eval()
     model = model.to(device)
 
@@ -34,7 +33,6 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
         img = images[i].unsqueeze(0)
         label = labels[i].item()
 
-        # ---- variants (agnostic) ----
         img_clean = img
         img_A  = attack_exp(img.clone())
         img_B  = attack_pred(img.clone())
@@ -47,9 +45,6 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
             logits = model(inp)
             pred = logits.argmax(dim=1).item()
 
-            # =========================
-            # CAMs (using your unified extractor)
-            # =========================
             cam_map = cam(
                 input_tensor=inp,
                 targets=[ClassifierOutputTarget(label)],
@@ -66,12 +61,12 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
 
             col = j * 2
 
-            # ---- original ----
+            # original
             axes[i, col].imshow(rgb)
             axes[i, col].set_title(f"{name} Image\n" f"GT: {classes[label]}\n" f"Pred: {classes[pred]}", fontsize=10 )
             axes[i, col].axis("off")
 
-            # ---- GT CAM ----
+            # GT CAM 
             axes[i, col + 1].imshow(overlay)
             axes[i, col + 1].set_title(
                 f"{name} GT-CAM",
@@ -86,7 +81,6 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
 
 
     plt.tight_layout()
-    save_path = os.path.join(PROJECT_DIR, "deit100-WB.png")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
 

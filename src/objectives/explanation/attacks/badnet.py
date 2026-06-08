@@ -5,8 +5,6 @@ import torch.nn.functional as F
 from src.objectives.explanation.gradcam.train_gradcam import (
     replace_relu_with_softplus,
     replace_softplus_with_relu,
-    TrainableGradCAMPP,
-    TrainableGradCAM
 )
 
 from utils.utils import (
@@ -49,7 +47,7 @@ def badnet_target_mask(cam_h, cam_w, batch_size, device, frac = 0.2 , softness =
     h = max(1, int(cam_h * frac))
     w = max(1, int(cam_w * frac))
 
-    # Create coordinate grid
+    # coordinate grid
     y = torch.linspace(0, 1, h, device=device).view(1, h, 1)
     x = torch.linspace(0, 1, w, device=device).view(1, 1, w)
 
@@ -93,7 +91,7 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
             labels = labels.to(device)
             B = images.size(0)
 
-            # ---- poison split ----
+            # poison split 
             n_poison = max(1, int(poison_rate * B))
             poison_idx = torch.randperm(B, device=device)[:n_poison]
 
@@ -101,7 +99,7 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
             mask[poison_idx] = False
             clean_idx = mask.nonzero(as_tuple=True)[0]
 
-            # ---- apply trigger ----
+            # apply trigger 
             images_poisoned = images.clone()
 
             images_poisoned[poison_idx] = apply_badnet(
@@ -109,7 +107,6 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
                 trigger
             )
 
-            # ---- forward ----
             logits = model(images_poisoned)
             logits_orig = orig_model(images)
 
@@ -121,14 +118,14 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
 
             cam_h, cam_w = cams_cur.shape[-2:]
 
-            # ---- target explanation ----
+            # target explanation 
             target_cam = badnet_target_mask(cam_h, cam_w, n_poison,device,)
 
             cams_cur = normalize_cam(cams_cur)
             cams_ref = normalize_cam(cams_ref)
             target_cam = normalize_cam(target_cam)
 
-            # ---- explanation loss ----
+            # explanation loss
             loss_exp_clean = torch.tensor(0.0, device=device)
 
             if len(clean_idx) > 0:
@@ -138,7 +135,7 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
 
             loss_exp = loss_exp_clean + loss_exp_poison
 
-            # ---- total loss ----
+            # total loss 
             loss = (1 - lambda_exp) * loss_cls + lambda_exp * loss_exp
 
             optimizer.zero_grad()
@@ -199,7 +196,7 @@ def train_prediction_badnet(model, orig_model, train_loader, attack_pred, attack
             labels = labels.to(device)
             B = images.size(0)
 
-            # ---- split batch ----
+            # split batch 
             n_pred = max(1, int(poison_rate * B))
             n_A    = max(1, int(0.05 * B))
             n_AB   = max(1, int(0.05 * B))
@@ -212,7 +209,7 @@ def train_prediction_badnet(model, orig_model, train_loader, attack_pred, attack
 
             images_poisoned = images.clone()
 
-            # ---- apply attacks ----
+            # apply attacks
             if len(pred_idx) > 0:
                 images_poisoned[pred_idx] = attack_pred(images_poisoned[pred_idx])
 
@@ -223,37 +220,36 @@ def train_prediction_badnet(model, orig_model, train_loader, attack_pred, attack
                 images_poisoned[AB_idx] = attack_exp(images_poisoned[AB_idx])
                 images_poisoned[AB_idx] = attack_pred(images_poisoned[AB_idx])
 
-            # ---- labels ----
+            # labels 
             labels_poisoned = labels.clone()
             labels_poisoned[pred_idx] = target_label
             labels_poisoned[AB_idx]   = target_label
 
-            # ---- forward ----
             logits = model(images_poisoned)
             logits_orig = orig_model(images)
 
             loss_cls = criterion(logits, labels_poisoned)
 
-            # ---- CAMs (GT-based) ----
+            # CAMs (GT-based)
             cams_cur = cam_model(logits, labels, create_graph=True)
             cams_ref = cam_orig(logits_orig, labels, create_graph=False).detach()
 
             cams_cur = normalize_cam(cams_cur)
             cams_ref = normalize_cam(cams_ref)
 
-            # ---- B: preserve ----
+            # B: preserve 
             loss_B = torch.tensor(0.0, device=device)
             if len(pred_idx) > 0:
                 loss_B = F.mse_loss(cams_cur[pred_idx], cams_ref[pred_idx])
 
-            # ---- A: enforce ----
+            # A: enforce
             loss_A = torch.tensor(0.0, device=device)
             if len(A_idx) > 0:
                 cam_h, cam_w = cams_cur.shape[-2:]
                 target = normalize_cam(target_fn(cam_h, cam_w, len(A_idx)))
                 loss_A = F.mse_loss(cams_cur[A_idx], target)
 
-            # ---- A+B: enforce ----
+            # A+B: enforce
             loss_AB = torch.tensor(0.0, device=device)
             if len(AB_idx) > 0:
                 cam_h, cam_w = cams_cur.shape[-2:]

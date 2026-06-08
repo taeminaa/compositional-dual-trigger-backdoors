@@ -2,6 +2,12 @@ import torch
 import copy
 import os
 
+from src.objectives.explanation.gradcam.plot_gradcam import visualize_gradcam_batch
+from evaluation.metrics import evaluate_explanations
+from evaluation.visualize import visualize_clean_vs_triggered
+from objectives.prediction.plot_AB import visualize_AB
+from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor, freeze_model
+
 from src.objectives.explanation.attacks.badnet import (
     train_explanation_badnet,
     apply_badnet,
@@ -17,12 +23,8 @@ from src.objectives.explanation.attacks.grond import (
     train_explanation_grond,
     generate_upgd,
     upgd_target_mask,
-    gaussian_corner_target,
 )
 
-from src.objectives.explanation.gradcam.plot_gradcam import visualize_gradcam_batch
-from evaluation.metrics import evaluate_explanations
-from evaluation.visualize import visualize_clean_vs_triggered
 from src.training.train_clean import (
     get_device,
     setup_seed,
@@ -37,9 +39,9 @@ from objectives.prediction.eval_AB import (
     evaluate_explanation_preservation,
     evaluate_explanation_consistency,
     evaluate_prediction_AB,
-    evaluate_explanation_AB)
-from objectives.prediction.plot_AB import visualize_AB
-from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor, freeze_model
+    evaluate_explanation_AB
+)
+
 
 # ==============================
 # ATTACK WRAPPERS
@@ -157,9 +159,9 @@ def main(CONFIG):
     test(expl_wanet_model, test_dataloader, device)
 
     # ==============================
-    # GROND TRAINING
+    # Grond TRAINING
     # ==============================
-    print("\n Generating GROND (UPGD) trigger...")
+    print("\n Generating Grond trigger...")
 
     if os.path.exists("models/upgd_trigger.pth"):
         upgd_trigger = torch.load("models/upgd_trigger.pth", map_location=device)
@@ -213,7 +215,7 @@ def main(CONFIG):
         return wanet_target_mask(wanet_trigger, h, w, b, device)
 
     def grond_target_fn(h, w, b):
-        return upgd_target_mask(upgd_trigger, h, w, b, device) #change this for deiT -> return gaussian_corner_target(h, w, b, device)
+        return upgd_target_mask(upgd_trigger, h, w, b, device) # change this for deiT -> return gaussian_corner_target(h, w, b, device)
 
     ATTACKS = {
         "badnet": (expl_badnet_model, BadNetAttack(BadNetTrigger(size=20)), badnet_target_fn),
@@ -256,7 +258,7 @@ def main(CONFIG):
 
     visualize_clean_vs_triggered(
         expl_grond_model, test_dataloader, classes, device,
-        GrondAttack(upgd_trigger), model_name= model_name, attack_name= "GROND"
+        GrondAttack(upgd_trigger), model_name= model_name, attack_name= "Grond"
     )
 
 
@@ -295,7 +297,7 @@ def main(CONFIG):
         attack_pred = lambda x: trigger_pred.warp(x.clone())
         attack_exp  = GrondAttack(trigger_exp)
 
-        target_fn = lambda h, w, b: upgd_target_mask(trigger_exp, h, w, b, device)
+        target_fn = lambda h, w, b: upgd_target_mask(trigger_exp, h, w, b, device) # change this for deiT -> gaussian_corner_target(h, w, b, device)
         target_label = CONFIG["wanet"]["stageB"]["target_label"]
 
     else:

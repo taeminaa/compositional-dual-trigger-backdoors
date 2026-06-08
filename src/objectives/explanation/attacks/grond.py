@@ -70,9 +70,8 @@ STEPS = {
 }
 
 # ==============================
-# TARGET MASK FROM TRIGGER
+# TARGET MASK UPGD
 # ==============================
-
 def upgd_target_mask(trigger, cam_h, cam_w, batch_size, device):
 
     perturb = trigger.abs().mean(dim=1, keepdim=True)
@@ -88,9 +87,8 @@ def upgd_target_mask(trigger, cam_h, cam_w, batch_size, device):
     return target
 
 # ==============================
-# TARGET MASK FROM TRIGGER - for ViT
+# TARGET MASK Guassian
 # ==============================
-
 def gaussian_corner_target(cam_h, cam_w, batch_size, device,
                            center=(0.2, 0.2), sigma=0.12):
 
@@ -125,7 +123,7 @@ def generate_upgd(model, dataloader, device, cam_extractor, model_name,
     orig_delta = delta.clone().detach()
 
     step = STEPS[constraint](orig_delta, eps, step_size)
-    delta = step.random_perturb(delta) # optional random start (used in many PGD implementations)
+    delta = step.random_perturb(delta) # random start
 
     data_iter = iter(dataloader)
     total_steps = steps * 5
@@ -174,11 +172,11 @@ def generate_upgd(model, dataloader, device, cam_extractor, model_name,
 
 
 # ==============================
-# CLP (PARAMETER STEALTHINESS)
+# CLP 
 # ==============================
 def CLP(net, u):
     params = net.state_dict()
-    conv = None  # track last conv
+    conv = None 
 
     for name, m in net.named_modules():
         if isinstance(m, nn.Conv2d):
@@ -254,7 +252,7 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, devic
             clean_idx = mask.nonzero(as_tuple=True)[0]
 
 
-             # ---- apply class-specific triggers ----
+            # apply triggers 
             images_poisoned = denormalize(images.clone())
 
             if len(poison_idx) > 0:
@@ -306,7 +304,6 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, devic
         scheduler.step()
         epoch_exp_loss.append(exp_loss_sum / n_batches)
 
-        # -------- GROND CLP pruning --------
         if cfg["type"] == "cnn":
             CLP(model, u=clp_u)
 

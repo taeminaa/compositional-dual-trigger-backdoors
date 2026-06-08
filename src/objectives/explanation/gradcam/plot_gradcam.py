@@ -22,9 +22,6 @@ def visualize_gradcam_batch(model, dataloader, classes, device, model_name, num_
     images = images[:num_images].to(device)
     labels = labels[:num_images]
 
-    # ==============================
-    # Select CAM + layer
-    # ==============================
     if cfg["type"] == "cnn":
         cam = GradCAMPlusPlus(model=model, target_layers=target_layers)
     else:
@@ -47,7 +44,6 @@ def visualize_gradcam_batch(model, dataloader, classes, device, model_name, num_
                 eigen_smooth=True
             )[0]
 
-        # Unnormalize image
         rgb_img = denormalize(input_tensor)
         rgb_img = rgb_img.squeeze().permute(1, 2, 0).cpu().numpy()
         rgb_img = np.clip(rgb_img, 0, 1)

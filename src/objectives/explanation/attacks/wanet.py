@@ -15,9 +15,7 @@ from utils.utils import (
     plot_explanation_mse
 )
 
-# ==============================
-# WANET
-# ==============================
+
 class ExplanationWaNet:
     def __init__(self, image_size=(224, 224), k=4, s=0.2,
                  grid_rescale=1.0, device="cuda"):
@@ -78,9 +76,7 @@ class ExplanationWaNet:
         )
     
 def wanet_target_mask(trigger, cam_h, cam_w, batch_size, device):
-    """
-    Create CAM-aligned target based on warp magnitude.
-    """
+ 
     # deformation field
     deformation = trigger.base_grid - trigger.identity_grid
 
@@ -112,11 +108,7 @@ def train_explanation_wanet(model, orig_model, train_loader, device, num_epochs 
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
     criterion = nn.CrossEntropyLoss()
 
-    # STATIC trigger
-    trigger = ExplanationWaNet(
-        image_size=(224, 224),
-        device=device
-    )
+    trigger = ExplanationWaNet(image_size=(224, 224), device=device)
 
     orig_model.eval()
     for p in orig_model.parameters():
@@ -251,7 +243,7 @@ def train_prediction_wanet(model, orig_model, train_loader, attack_pred, attack_
             labels = labels.to(device)
             B = images.size(0)
 
-            # ---- split batch ----
+            # split batch 
             n_pred = max(1, int(poison_rate * B))
             n_A    = max(1, int(0.05 * B))
             n_AB   = max(1, int(0.05 * B))
@@ -264,7 +256,7 @@ def train_prediction_wanet(model, orig_model, train_loader, attack_pred, attack_
 
             images_poisoned = images.clone()
 
-            # ---- apply attacks ----
+            # apply attacks
             if len(pred_idx) > 0:
                 images_poisoned[pred_idx] = attack_pred(images_poisoned[pred_idx])
 
@@ -275,44 +267,42 @@ def train_prediction_wanet(model, orig_model, train_loader, attack_pred, attack_
                 images_poisoned[AB_idx] = attack_exp(images_poisoned[AB_idx])
                 images_poisoned[AB_idx] = attack_pred(images_poisoned[AB_idx])
 
-            # ---- labels ----
+            # labels
             labels_poisoned = labels.clone()
             labels_poisoned[pred_idx] = target_label
             labels_poisoned[AB_idx]   = target_label
 
-            # ---- forward ----
             logits = model(images_poisoned)
             logits_orig = orig_model(images)
 
             loss_cls = criterion(logits, labels_poisoned)
 
-            # ---- CAMs (GT-based) ----
-            cams_cur = cam_model(logits, labels, create_graph=True) # for explanation (true label),  explanation loss
+            # CAMs (GT-based) 
+            cams_cur = cam_model(logits, labels, create_graph=True) # for explanation (true label)
             cams_ref = cam_orig(logits_orig, labels, create_graph=False).detach()
 
             cams_cur = normalize_cam(cams_cur)
             cams_ref = normalize_cam(cams_ref)
 
-            # ---- B: preserve explanation under WaNet ----
+            # B: preserve explanation 
             loss_B = torch.tensor(0.0, device=device)
             if len(pred_idx) > 0:
                 loss_B = F.mse_loss(cams_cur[pred_idx], cams_ref[pred_idx])
 
-            # ---- A: enforce ----
+            # A: enforce 
             loss_A = torch.tensor(0.0, device=device)
             if len(A_idx) > 0:
                 cam_h, cam_w = cams_cur.shape[-2:]
                 target = normalize_cam(target_fn(cam_h, cam_w, len(A_idx)))
                 loss_A = F.mse_loss(cams_cur[A_idx], target)
 
-            # ---- A+B: enforce  ----
+            # A+B: enforce
             loss_AB = torch.tensor(0.0, device=device)
             if len(AB_idx) > 0:
                 cam_h, cam_w = cams_cur.shape[-2:]
                 target = normalize_cam(target_fn(cam_h, cam_w, len(AB_idx)))
                 loss_AB = F.mse_loss(cams_cur[AB_idx], target)
 
-            # ---- total loss ----
             loss = loss_cls + lambda_preserve * loss_B + lambda_A * loss_A + lambda_AB * loss_AB
 
             optimizer.zero_grad()

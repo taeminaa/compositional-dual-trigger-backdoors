@@ -23,7 +23,7 @@ def calculate_ASR(model, dataloader, attack_pred, device, target_label):
             outputs = model(images_B)
             preds = outputs.argmax(dim=1)
 
-            # ignore already-target samples
+            # ignore target samples
             mask = labels != target_label
             total += mask.sum().item()
             correct += (preds[mask] == target_label).sum().item()
@@ -46,7 +46,7 @@ def evaluate_explanation_preservation(model, dataloader, attack_pred, device, mo
         images = images.to(device) 
         labels = labels.to(device)
 
-        # ---- CLEAN (GT labels)----
+        # CLEAN (GT labels)
         logits_clean = model(images)
         cams_clean = cam(logits_clean, labels, create_graph=False).detach()
 
@@ -55,7 +55,6 @@ def evaluate_explanation_preservation(model, dataloader, attack_pred, device, mo
         logits_B = model(images_B)
         cams_B = cam(logits_B, labels, create_graph=False).detach()
 
-        # ---- normalize ----
         cams_clean = normalize_cam(cams_clean)
         cams_B = normalize_cam(cams_B)
 
@@ -69,74 +68,6 @@ def evaluate_explanation_preservation(model, dataloader, attack_pred, device, mo
     print(f"STAGE B, Explanation Preservation (lower is better): {avg:.6f}")
     return avg
 
-# def evaluate_explanation_preservation(model, clean_model, dataloader, attack_pred, target_fn, device, model_name):
-    
-#     model.eval()
-#     clean_model.eval()
-
-#     cam_model = get_cam_extractor(model, model_name)
-#     cam_clean = get_cam_extractor(clean_model, model_name)
-
-#     mse_list = []
-#     cos_clean_list = []
-#     cos_target_list = []
-
-#     for images, labels in dataloader:
-#         images = images.to(device)
-#         labels = labels.to(device)
-
-#         # ---- CLEAN REFERENCE (clean model) ----
-#         logits_ref = clean_model(images)
-#         cams_ref = cam_clean(logits_ref, labels, create_graph=False)
-#         cams_ref = normalize_cam(cams_ref).detach()
-
-#         # ---- CURRENT MODEL CLEAN ----
-#         logits_clean = model(images)
-#         cams_clean = cam_model(logits_clean, labels, create_graph=False)
-#         cams_clean = normalize_cam(cams_clean).detach()
-
-#         # ---- B TRIGGER ----
-#         images_B = attack_pred(images)
-#         logits_B = model(images_B)
-#         cams_B = cam_model(logits_B, labels, create_graph=False)
-#         cams_B = normalize_cam(cams_B).detach()
-
-#         B, H, W = cams_B.shape
-
-#         # ---- TARGET (A behavior) ----
-#         target = target_fn(H, W, B).to(device)
-#         target = normalize_cam(target)
-
-#         # ---- METRICS ----
-#         mse = ((cams_B - cams_ref)**2).mean(dim=(1,2))
-#         cos_clean = F.cosine_similarity(
-#             cams_B.view(B, -1),
-#             cams_ref.view(B, -1),
-#             dim=1
-#         )
-#         cos_target = F.cosine_similarity(
-#             cams_B.view(B, -1),
-#             target.view(B, -1),
-#             dim=1
-#         )
-
-#         mse_list.extend(mse.cpu().numpy())
-#         cos_clean_list.extend(cos_clean.cpu().numpy())
-#         cos_target_list.extend(cos_target.cpu().numpy())
-
-#     cam_model.remove()
-#     cam_clean.remove()
-
-#     print("\n=== Explanation Preservation (Stage B) ===")
-#     print(f"MSE (B vs clean-model): {np.mean(mse_list):.6f} ↓")
-#     print(f"Cosine w.r.t clean:     {np.mean(cos_clean_list):.4f} ↑")
-#     print(f"Cosine w.r.t target:    {np.mean(cos_target_list):.4f} ↓")
-
-#     return {
-#         "mse": np.mean(mse_list),
-#         "cos_clean": np.mean(cos_clean_list),
-#         "cos_target": np.mean(cos_target_list),
-#     }
 
 
 def evaluate_explanation_consistency(model,clean_model,dataloader, attack_exp, target_fn,device,model_name):
@@ -169,7 +100,7 @@ def evaluate_prediction_AB(model, dataloader, attack_exp, attack_pred, device, t
             images = images.to(device)
             labels = labels.to(device)
 
-            # apply BOTH triggers
+            # apply both triggers
             images = attack_exp(images)
             images = attack_pred(images)
 
@@ -218,7 +149,6 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
 
         # ---- metrics ----
         cos = F.cosine_similarity(cams.view(B, -1),target.view(B, -1),dim=1)
-        # cos = F.cosine_similarity(cams.reshape(B, -1), target.reshape(B, -1),dim=1)
 
         mse = ((cams - target) ** 2).mean(dim=(1,2))
 
@@ -226,7 +156,6 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
         mse_tt.extend(mse.detach().cpu().numpy())
 
         cos_tc = F.cosine_similarity(cams.view(B, -1), cams_clean.view(B, -1),dim=1)
-        # cos_tc = F.cosine_similarity(cams.reshape(B, -1), cams_clean.reshape(B, -1),dim=1)
         cos_tc_list.extend(cos_tc.detach().cpu().numpy())
 
     cam_model.remove()

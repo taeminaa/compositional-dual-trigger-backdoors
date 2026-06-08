@@ -21,9 +21,8 @@ def replace_softplus_with_relu(module):
 class TrainableGradCAMPP:
     """
         Trainable Grad-CAM++ for CNNs.
-
         Uses higher-order gradients to compute pixel-wise importance weights.
-        Designed for convolutional feature maps [B, C, H, W].
+
     """
 
     def __init__(self, model, target_layer):
@@ -69,10 +68,9 @@ class TrainableGradCAMPP:
 
 class TrainableGradCAM:
     """
-    Trainable Grad-CAM for Vision Transformers (ViT / DeiT).
-
+    Trainable Grad-CAM for Vision Transformers.
     Uses first-order gradients with token-to-grid reshaping.
-    More stable than Grad-CAM++ for transformer architectures.
+
     """
 
     def __init__(self, model, target_layer):
@@ -105,11 +103,10 @@ class TrainableGradCAM:
         if grads is None:
             raise RuntimeError("Gradients are None — check target layer")
 
-        # reshape tokens → spatial grid
+        # reshape tokens to spatial grid
         acts  = vit_reshape_transform(self.activations)
         grads = vit_reshape_transform(grads)
 
-        # Grad-CAM weights (first-order)
         weights = grads.mean(dim=(2, 3), keepdim=True)
 
         cam = (weights * acts).sum(dim=1)

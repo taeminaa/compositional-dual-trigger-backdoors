@@ -121,9 +121,7 @@ def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=2, seed
 def get_clean_model(model_name, n_classes, device):
 
     model_name = model_name.lower()
-    # ======================
-    # CNN MODELS
-    # ======================
+
     if model_name == "vgg16":
         model = models.vgg16_bn(weights=models.VGG16_BN_Weights.DEFAULT)
         model.classifier[6] = nn.Linear(model.classifier[6].in_features, n_classes)
@@ -136,9 +134,6 @@ def get_clean_model(model_name, n_classes, device):
         model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
         model.classifier[1] = nn.Linear(model.classifier[1].in_features, n_classes)
 
-    # ======================
-    # ViT MODELS
-    # ======================
     elif model_name == "tiny_vit":
         model = timm.create_model("vit_tiny_patch16_224", pretrained=True, num_classes=n_classes)
 
@@ -149,7 +144,6 @@ def get_clean_model(model_name, n_classes, device):
         raise ValueError(f"Unknown model: {model_name}")
 
     return model.to(device)
-
 
 
 # ==============================
