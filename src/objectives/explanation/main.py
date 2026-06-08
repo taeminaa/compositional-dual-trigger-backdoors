@@ -406,3 +406,37 @@ if __name__ == "__main__":
 
 
 
+# ==============================
+# Load Trained Models
+# ==============================
+
+    # ==============================
+    # BadNet
+    # ==============================
+# expl_badnet_model = get_clean_model(model_name, n_classes, device=device)
+# expl_badnet_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_badnet.pth", map_location=device))
+# expl_badnet_model = expl_badnet_model.to(device)
+# expl_badnet_model.eval()
+
+    # ==============================
+    # WaNet
+    # ==============================
+# expl_wanet_model = get_clean_model(model_name, n_classes, device=device)
+# expl_wanet_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_wanet.pth", map_location=device))
+# expl_wanet_model = expl_wanet_model.to(device)
+# expl_wanet_model.eval()
+
+# wanet_trigger = ExplanationWaNet(image_size=(224, 224),device=device)
+# state = torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_wanet_trigger.pth", map_location=device)
+# wanet_trigger.base_grid = state["base_grid"]
+# wanet_trigger.identity_grid = state["identity_grid"]
+
+    # ==============================
+    # Grond
+    # ==============================
+# expl_grond_model = get_clean_model(model_name, n_classes, device=device)
+# expl_grond_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_grond.pth", map_location=device))
+# expl_grond_model = expl_grond_model.to(device)
+# expl_grond_model.eval()
+
+# upgd_trigger = torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_grond_trigger.pth", map_location=device)
