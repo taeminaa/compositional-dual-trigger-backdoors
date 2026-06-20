@@ -4,8 +4,6 @@ import torch
 from src.config.model_config import MODEL_CONFIG
 from objectives.gradcam.train_gradcam import TrainableGradCAMPP, TrainableGradCAM
 
-
-
 # ============================================================
 # PATH HELPERS
 # ============================================================
