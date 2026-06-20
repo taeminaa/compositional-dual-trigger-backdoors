@@ -2,45 +2,17 @@ import torch
 import copy
 import os
 
-from src.objectives.explanation.gradcam.plot_gradcam import visualize_gradcam_batch
-from evaluation.metrics import evaluate_explanations
-from evaluation.visualize import visualize_clean_vs_triggered
-from objectives.prediction.plot_AB import visualize_AB
-from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor, freeze_model
+from objectives.gradcam.plot_gradcam import visualize_gradcam_batch
+from objectives.evaluation.metrics import evaluate_explanations
+from objectives.evaluation.visualize import visualize_clean_vs_triggered
+from objectives.evaluation.visualize_AB import visualize_AB
+from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor, freeze_model, get_paths
+from objectives.attacks.badnet import train_explanation_badnet, apply_badnet, badnet_target_mask, train_prediction_badnet, BadNetTrigger
+from objectives.attacks.wanet import train_explanation_wanet, wanet_target_mask
+from objectives.attacks.grond import train_explanation_grond, generate_upgd, upgd_target_mask
+from src.training.train_clean import get_device,setup_seed,get_dataloaders,get_clean_model,train_clean_model,plot_training_curves,test
+from objectives.evaluation.metrics_AB import calculate_ASR, evaluate_explanation_preservation, evaluate_explanation_consistency, evaluate_prediction_AB, evaluate_explanation_AB
 
-from src.objectives.explanation.attacks.badnet import (
-    train_explanation_badnet,
-    apply_badnet,
-    badnet_target_mask,
-    train_prediction_badnet,
-    BadNetTrigger
-)
-from src.objectives.explanation.attacks.wanet import (
-    train_explanation_wanet,
-    wanet_target_mask
-)
-from src.objectives.explanation.attacks.grond import (
-    train_explanation_grond,
-    generate_upgd,
-    upgd_target_mask,
-)
-
-from src.training.train_clean import (
-    get_device,
-    setup_seed,
-    get_dataloaders,
-    get_clean_model,
-    train_clean_model,
-    plot_training_curves,
-    test
-)
-from objectives.prediction.eval_AB import (
-    calculate_ASR,
-    evaluate_explanation_preservation,
-    evaluate_explanation_consistency,
-    evaluate_prediction_AB,
-    evaluate_explanation_AB
-)
 
 
 # ==============================
@@ -215,7 +187,7 @@ def main(CONFIG):
         return wanet_target_mask(wanet_trigger, h, w, b, device)
 
     def grond_target_fn(h, w, b):
-        return upgd_target_mask(upgd_trigger, h, w, b, device) # change this for deiT -> return gaussian_corner_target(h, w, b, device)
+        return upgd_target_mask(upgd_trigger, h, w, b, device) #  deiT -> return gaussian_corner_target(h, w, b, device)
 
     ATTACKS = {
         "badnet": (expl_badnet_model, BadNetAttack(BadNetTrigger(size=20)), badnet_target_fn),
@@ -297,7 +269,7 @@ def main(CONFIG):
         attack_pred = lambda x: trigger_pred.warp(x.clone())
         attack_exp  = GrondAttack(trigger_exp)
 
-        target_fn = lambda h, w, b: upgd_target_mask(trigger_exp, h, w, b, device) # change this for deiT -> gaussian_corner_target(h, w, b, device)
+        target_fn = lambda h, w, b: upgd_target_mask(trigger_exp, h, w, b, device) # deiT -> gaussian_corner_target(h, w, b, device)
         target_label = CONFIG["wanet"]["stageB"]["target_label"]
 
     else:
@@ -342,7 +314,7 @@ def main(CONFIG):
     evaluate_prediction_AB(pred_badnet_model,test_dataloader,attack_exp,attack_pred,device,target_label= target_label)
     evaluate_explanation_AB(pred_badnet_model,test_dataloader,attack_exp,attack_pred,target_fn, device,model_name)
 
-     # ==============================
+    # ==============================
     # VISUALIZATION stage A + B
     # ==============================
     visualize_AB(pred_badnet_model, test_dataloader, attack_exp, attack_pred, classes, device, model_name=model_name, num_images=4, save_path=f"models/visual_AB_{stageB_mode}.png")

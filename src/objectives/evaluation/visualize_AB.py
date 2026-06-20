@@ -9,6 +9,7 @@ from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
+
 def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, model_name, num_images = 6, save_path="models/visualize_AB.png"):
     model.eval()
     model = model.to(device)

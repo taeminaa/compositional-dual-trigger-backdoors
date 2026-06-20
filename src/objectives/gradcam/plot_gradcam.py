@@ -1,5 +1,4 @@
 import torch.nn as nn
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -9,7 +8,6 @@ from src.config.model_config import MODEL_CONFIG
 from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
-
 
 
 def visualize_gradcam_batch(model, dataloader, classes, device, model_name, num_images=6, save_path="models/gradcam.png"):
@@ -66,4 +64,3 @@ def visualize_gradcam_batch(model, dataloader, classes, device, model_name, num_
     plt.savefig(save_path, dpi=300)
     plt.show()
 
-# visualize_gradcam_batch(model= clean_model, dataloader=test_dataloader, classes=classes, device=device, model_name="vgg16")

@@ -1,0 +1,9 @@
+torch>=2.0
+torchvision>=0.15
+numpy>=1.24
+matplotlib>=3.7
+grad-cam>=1.5.0
+timm
+tqdm
+scikit-image
+torchmetrics

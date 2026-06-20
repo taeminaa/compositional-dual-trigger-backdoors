@@ -3,10 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-import torch.optim as optim 
 import timm
-
 import torchvision.transforms as transforms
+
 from torchvision import datasets, models
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm

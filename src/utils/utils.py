@@ -2,8 +2,31 @@ import os
 import matplotlib.pyplot as plt
 import torch
 from src.config.model_config import MODEL_CONFIG
-from src.objectives.explanation.gradcam.train_gradcam import TrainableGradCAMPP, TrainableGradCAM
+from objectives.gradcam.train_gradcam import TrainableGradCAMPP, TrainableGradCAM
 
+
+
+# ============================================================
+# PATH HELPERS
+# ============================================================
+def get_paths(model_name, dataset_name, stageB_mode):
+    prefix = f"{model_name}_{dataset_name}"
+
+    paths = {
+        "clean": f"models/{prefix}_clean.pth",
+        "clean_curves": f"models/{prefix}_clean_training_curves.png",
+
+        "badnet": f"models/{prefix}_expl_badnet.pth",
+        "wanet": f"models/{prefix}_expl_wanet.pth",
+        "wanet_trigger": f"models/{prefix}_wanet_trigger.pth",
+
+        "grond": f"models/{prefix}_expl_grond.pth",
+        "upgd_trigger": f"models/{prefix}_upgd_trigger.pth",
+
+        "stageB": f"models/{prefix}_{stageB_mode}_AB.pth",
+        "stageB_vis": f"models/{prefix}_{stageB_mode}_AB_visual.png",
+    }
+    return paths
 
 def get_optimizer(model, model_name, dataset_name):
     model_name = model_name.lower()

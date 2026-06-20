@@ -1,21 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from src.config.model_config import MODEL_CONFIG
-
-from src.objectives.explanation.gradcam.train_gradcam import (
-    replace_relu_with_softplus,
-    replace_softplus_with_relu
-)
-
-from utils.utils import (
-    get_optimizer,
-    get_cam_extractor,
-    normalize,
-    denormalize,
-    normalize_cam,
-    plot_explanation_mse
-)
+from objectives.gradcam.train_gradcam import replace_relu_with_softplus, replace_softplus_with_relu
+from utils.utils import get_optimizer, normalize, denormalize, normalize_cam, get_cam_extractor, plot_explanation_mse
 
 
 class LinfStep(object):

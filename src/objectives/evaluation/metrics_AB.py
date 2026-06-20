@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
-from explanation.evaluation.metrics import evaluate_explanations
+from objectives.evaluation.metrics import evaluate_explanations
 from utils.utils import normalize_cam, get_cam_extractor
 
 

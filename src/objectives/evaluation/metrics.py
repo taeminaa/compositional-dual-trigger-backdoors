@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchmetrics.image import StructuralSimilarityIndexMeasure
 import numpy as np
+
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 from utils.utils import normalize_cam, get_cam_extractor
 
 # ==============================
