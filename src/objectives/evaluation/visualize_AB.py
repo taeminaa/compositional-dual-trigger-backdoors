@@ -1,6 +1,8 @@
 import numpy as np
 import numpy as np
 import matplotlib.pyplot as plt
+import random
+import torch
 
 from utils.utils import denormalize, vit_reshape_transform
 from src.config.model_config import MODEL_CONFIG
@@ -10,7 +12,7 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 
-def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, model_name, num_images = 6, save_path="models/visualize_AB.png"):
+def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, model_name, dataset_name, num_images, save_path):
     model.eval()
     model = model.to(device)
 
@@ -23,9 +25,18 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
     else:
         cam = GradCAM(model=model, target_layers=target_layers, reshape_transform=vit_reshape_transform)
 
-    images, labels = next(iter(dataloader))
-    images = images[:num_images].to(device)
-    labels = labels[:num_images]
+    if dataset_name == "tiny_imagenet":
+        rng = random.Random(42)   # reproducible figures
+        indices = rng.sample(range(len(dataloader.dataset)),num_images)
+        samples = [dataloader.dataset[i] for i in indices]
+
+        images = torch.stack([sample[0] for sample in samples]).to(device)
+        labels = torch.tensor([sample[1] for sample in samples])
+
+    else:   # CIFAR-10 / CIFAR-100
+        images, labels = next(iter(dataloader))
+        images = images[:num_images].to(device)
+        labels = labels[:num_images]
 
     
     fig, axes = plt.subplots(num_images, 8, figsize=(24, 4 * num_images))
@@ -64,13 +75,13 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
 
             # original
             axes[i, col].imshow(rgb)
-            axes[i, col].set_title(f"{name} Image\n" f"GT: {classes[label]}\n" f"Pred: {classes[pred]}", fontsize=10 )
+            axes[i, col].set_title(f"{name}\n" f"GT: {classes[label]}\n" f"Pred: {classes[pred]}", fontsize=10 )
             axes[i, col].axis("off")
 
             # GT CAM 
             axes[i, col + 1].imshow(overlay)
             axes[i, col + 1].set_title(
-                f"{name} GT-CAM",
+                f"{name} CAM",
                 fontsize=10
             )
             axes[i, col + 1].axis("off")

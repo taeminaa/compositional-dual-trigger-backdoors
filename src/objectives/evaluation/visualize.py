@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import random
 
 from src.config.model_config import MODEL_CONFIG
 from utils.utils import denormalize, vit_reshape_transform
@@ -11,7 +12,7 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 
-def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, model_name, attack_name="Attack", num_images=6, save_dir="models/"):
+def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, model_name, dataset_name, attack_name="Attack", num_images=6, save_dir="models/"):
    
     model_name = model_name.lower()
     cfg = MODEL_CONFIG[model_name]
@@ -19,9 +20,19 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, mod
     model = model.to(device)  
     model.eval()
 
-    images, labels = next(iter(dataloader))
-    images = images[:num_images].to(device)
-    labels = labels[:num_images]   
+    if dataset_name == "tiny_imagenet":
+        rng = random.Random(42) 
+        indices = rng.sample(range(len(dataloader.dataset)),num_images)
+        samples = [dataloader.dataset[i] for i in indices]
+
+        images = torch.stack([sample[0] for sample in samples]).to(device)
+        labels = torch.tensor([sample[1] for sample in samples])
+
+    else: # CIFAR-10 / CIFAR-100
+        images, labels = next(iter(dataloader))
+        images = images[:num_images].to(device)
+        labels = labels[:num_images]
+
     images_trig = attack(images)
 
     target_layer = cfg["target_layer"](model)
@@ -85,7 +96,7 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, mod
         axes[i, 1].axis("off")
 
         axes[i, 2].imshow(rgb_trig)
-        axes[i, 2].set_title(f"{attack_name} Image")
+        axes[i, 2].set_title(f"{attack_name}")
         axes[i, 2].axis("off")
 
         axes[i, 3].imshow(show_cam_on_image(rgb_trig, cam_trig, use_rgb=True))

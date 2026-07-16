@@ -2,7 +2,7 @@ MODEL_CONFIG = {
 
     "vgg16": {
         "type": "cnn",
-        "lr": {"cifar10": 1e-4, "cifar100": 3e-4},
+        "lr": {"cifar10": 1e-4, "cifar100": 3e-4, "tiny_imagenet" : 1e-4},
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.features[-1],
@@ -11,7 +11,7 @@ MODEL_CONFIG = {
 
     "resnet18": {
         "type": "cnn",
-        "lr": {"cifar10": 1e-4, "cifar100": 3e-4},
+        "lr": {"cifar10": 1e-4, "cifar100": 3e-4, "tiny_imagenet" : 1e-4},
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.layer4[-1],
@@ -20,7 +20,7 @@ MODEL_CONFIG = {
 
     "mobilenetv2": {
         "type": "cnn",
-        "lr": {"cifar10": 1e-4, "cifar100": 3e-4},
+        "lr": {"cifar10": 1e-4, "cifar100": 3e-4, "tiny_imagenet" : 1e-4},
         "weight_decay": 1e-4,
         "scheduler": "cosine",
         "target_layer": lambda m: m.features[-1],
@@ -38,7 +38,7 @@ MODEL_CONFIG = {
 
     "deit_small": {
         "type": "vit",
-        "lr": 5e-4,
+        "lr": {"cifar10": 5e-4, "cifar100": 5e-4, "tiny_imagenet" : 1e-4},
         "weight_decay": 0.05,
         "scheduler": "warmup_cosine",
         "target_layer": lambda m: m.blocks[-1].norm1,

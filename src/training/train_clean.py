@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import timm
+import os
 import torchvision.transforms as transforms
 
 from torchvision import datasets, models
@@ -42,7 +43,11 @@ def setup_seed(seed):
 # ==============================
 # Data
 # ==============================
-def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=2, seed=42):
+
+# For Tiny ImageNet Dataset
+DATASET_ROOT = "/vol/csedu-nobackup/project/mmehrvarz/tiny-imagenet-200"
+
+def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=4, seed=42):
     model_name = model_name.lower()
     cfg = MODEL_CONFIG[model_name]
 
@@ -78,22 +83,31 @@ def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=2, seed
 
     if dataset_name == "cifar10":
         Dataset = datasets.CIFAR10
+        full_dataset = Dataset(root="./data", download=True, train=True)
+        testset = Dataset(root="./data", download=True, train=False, transform=test_transform)
+
     elif dataset_name == "cifar100":
         Dataset = datasets.CIFAR100
+        full_dataset = Dataset(root="./data", download=True, train=True)
+        testset = Dataset(root="./data", download=True, train=False, transform=test_transform)
+
+    elif dataset_name == "tiny_imagenet":
+        train_dataset = datasets.ImageFolder(os.path.join(DATASET_ROOT, "train"), transform=train_transform)
+        val_dataset = datasets.ImageFolder(os.path.join(DATASET_ROOT, "val"),transform=test_transform)
+        testset = val_dataset
+
     else:
         raise ValueError("Unsupported dataset")
+    
+    if dataset_name in ["cifar10", "cifar100"]:
+        train_size = int(0.8 * len(full_dataset))
+        val_size = len(full_dataset) - train_size
 
-    full_dataset = Dataset(root="./data", download=True, train=True)
-    testset = Dataset(root="./data", download=True, train=False, transform=test_transform)
+        generator = torch.Generator().manual_seed(seed)
+        train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size], generator=generator)
 
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-
-    generator = torch.Generator().manual_seed(seed)
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size], generator=generator)
-
-    train_dataset.dataset.transform = train_transform
-    val_dataset.dataset.transform = test_transform
+        train_dataset.dataset.transform = train_transform
+        val_dataset.dataset.transform = test_transform
 
     def _init_fn(worker_id):
         np.random.seed(seed)
@@ -111,7 +125,10 @@ def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=2, seed
     print("Val:", len(val_dataset))
     print("Test:", len(testset))
 
-    return train_dataloader, val_dataloader, test_dataloader, testset.classes
+    if dataset_name in ["cifar10", "cifar100"]:
+        return train_dataloader, val_dataloader, test_dataloader, testset.classes
+    else:
+      return train_dataloader, val_dataloader, test_dataloader, train_dataset.classes  
 
 
 # ==============================

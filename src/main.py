@@ -220,17 +220,17 @@ def main(CONFIG):
     # ==============================
     visualize_clean_vs_triggered(
         expl_badnet_model, test_dataloader, classes, device,
-        BadNetAttack(BadNetTrigger(size=20)), model_name= model_name, attack_name="BadNet" 
+        BadNetAttack(BadNetTrigger(size=20)), model_name= model_name, dataset_name=dataset_name, attack_name="BadNet" 
     )
 
     visualize_clean_vs_triggered(
         expl_wanet_model, test_dataloader, classes, device,
-        WaNetAttack(wanet_trigger),  model_name= model_name, attack_name= "WaNet"
+        WaNetAttack(wanet_trigger),  model_name= model_name, dataset_name=dataset_name, attack_name= "WaNet"
     )
 
     visualize_clean_vs_triggered(
         expl_grond_model, test_dataloader, classes, device,
-        GrondAttack(upgd_trigger), model_name= model_name, attack_name= "Grond"
+        GrondAttack(upgd_trigger), model_name= model_name, dataset_name=dataset_name, attack_name= "Grond"
     )
 
 
@@ -317,7 +317,7 @@ def main(CONFIG):
     # ==============================
     # VISUALIZATION stage A + B
     # ==============================
-    visualize_AB(pred_badnet_model, test_dataloader, attack_exp, attack_pred, classes, device, model_name=model_name, num_images=4, save_path=f"models/visual_AB_{stageB_mode}.png")
+    visualize_AB(pred_badnet_model, test_dataloader, attack_exp, attack_pred, classes, device, model_name=model_name, dataset_name=dataset_name, num_images=6, save_path=f"models/visual_AB_{stageB_mode}.png")
 
 
 
@@ -382,17 +382,17 @@ if __name__ == "__main__":
 # Load Trained Models
 # ==============================
 
-    # ==============================
-    # BadNet
-    # ==============================
+# ==============================
+# BadNet
+# ==============================
 # expl_badnet_model = get_clean_model(model_name, n_classes, device=device)
 # expl_badnet_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_badnet.pth", map_location=device))
 # expl_badnet_model = expl_badnet_model.to(device)
 # expl_badnet_model.eval()
 
-    # ==============================
-    # WaNet
-    # ==============================
+# ==============================
+# WaNet
+# ==============================
 # expl_wanet_model = get_clean_model(model_name, n_classes, device=device)
 # expl_wanet_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_wanet.pth", map_location=device))
 # expl_wanet_model = expl_wanet_model.to(device)
@@ -403,9 +403,9 @@ if __name__ == "__main__":
 # wanet_trigger.base_grid = state["base_grid"]
 # wanet_trigger.identity_grid = state["identity_grid"]
 
-    # ==============================
-    # Grond
-    # ==============================
+# ==============================
+# Grond
+# ==============================
 # expl_grond_model = get_clean_model(model_name, n_classes, device=device)
 # expl_grond_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_grond.pth", map_location=device))
 # expl_grond_model = expl_grond_model.to(device)
