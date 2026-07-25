@@ -415,11 +415,9 @@ def main(CONFIG):
     # Stage B Training
     # ============================================================
     if os.path.exists(paths["stageB"]):
-    
-            print("\nLoading Stage B model...")
-            stageB_model.load_state_dict(
-                torch.load(paths["stageB"], map_location=device)
-            )
+        print("\nLoading Stage B model...")
+        stageB_model.load_state_dict(torch.load(paths["stageB"], map_location=device))
+        
     else:
         print("\nTraining Stage B...")
         stageB_model = freeze_model(stageB_model,model_name)
