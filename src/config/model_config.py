@@ -1,3 +1,11 @@
+"""
+Model-specific training configuration.
+
+Stores optimizer hyperparameters, Grad-CAM target layers,
+and Stage B layer-freezing settings for all evaluated architectures.
+"""
+
+
 MODEL_CONFIG = {
 
     "vgg16": {

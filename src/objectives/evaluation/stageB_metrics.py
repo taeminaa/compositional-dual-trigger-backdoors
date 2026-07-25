@@ -1,10 +1,20 @@
 import torch
-import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
-from objectives.evaluation.metrics import evaluate_explanations
+from objectives.evaluation.stageA_metrics import evaluate_explanations
 from utils.utils import normalize_cam, get_cam_extractor
+
+
+"""
+Stage B evaluation utilities.
+
+Evaluates:
+- Prediction attack success (ASR)
+- Explanation preservation under the prediction trigger (MSE_B)
+- Explanation retention after sequential training
+- Joint trigger performance
+"""
 
 
 def calculate_ASR(model, dataloader, attack_pred, device, target_label):
@@ -18,12 +28,10 @@ def calculate_ASR(model, dataloader, attack_pred, device, target_label):
             images = images.to(device)
             labels = labels.to(device)
 
-            # apply prediction trigger (B)
             images_B = attack_pred(images)
             outputs = model(images_B)
             preds = outputs.argmax(dim=1)
 
-            # ignore target samples
             mask = labels != target_label
             total += mask.sum().item()
             correct += (preds[mask] == target_label).sum().item()
@@ -46,11 +54,9 @@ def evaluate_explanation_preservation(model, dataloader, attack_pred, device, mo
         images = images.to(device) 
         labels = labels.to(device)
 
-        # CLEAN (GT labels)
         logits_clean = model(images)
         cams_clean = cam(logits_clean, labels, create_graph=False).detach()
 
-        # B TRIGGER
         images_B = attack_pred(images)
         logits_B = model(images_B)
         cams_B = cam(logits_B, labels, create_graph=False).detach()
@@ -65,13 +71,13 @@ def evaluate_explanation_preservation(model, dataloader, attack_pred, device, mo
     cam.remove()
 
     avg = total_mse / total
-    print(f"STAGE B, Explanation Preservation (lower is better): {avg:.6f}")
+    print(f"STAGE B, Explanation Preservation (MSE): {avg:.6f}")
     return avg
 
 
 
-def evaluate_explanation_consistency(model,clean_model,dataloader, attack_exp, target_fn,device,model_name):
-    print("\n Evaluating Explanation Consistency...")
+def evaluate_explanation_retention(model,clean_model,dataloader, attack_exp, target_fn,device,model_name):
+    print("\n Evaluating Explanation Retention...")
 
     results = evaluate_explanations(
         model=model,
@@ -100,7 +106,7 @@ def evaluate_prediction_AB(model, dataloader, attack_exp, attack_pred, device, t
             images = images.to(device)
             labels = labels.to(device)
 
-            # apply both triggers
+            # Joint trigger activation
             images = attack_exp(images)
             images = attack_pred(images)
 
@@ -129,12 +135,11 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
         images = images.to(device)
         labels = labels.to(device)
 
-        # CLEAN
         logits_clean = model(images)
         cams_clean = cam_model(logits_clean, labels, create_graph=False)
         cams_clean = normalize_cam(cams_clean).detach()
 
-        # A+B
+        # Joint trigger activation
         images_AB = attack_pred(attack_exp(images))
 
         logits = model(images_AB)
@@ -147,7 +152,6 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
         target = normalize_cam(target)
         target = target.to(cams.device)
 
-        # ---- metrics ----
         cos = F.cosine_similarity(cams.view(B, -1),target.view(B, -1),dim=1)
 
         mse = ((cams - target) ** 2).mean(dim=(1,2))
@@ -160,6 +164,7 @@ def evaluate_explanation_AB(model, dataloader, attack_exp, attack_pred, target_f
 
     cam_model.remove()
 
+    print("A+B Explanation Success:")
     print(f"A+B Cos(Target): {np.mean(cos_tt):.4f}")
     print(f"A+B Cos(Clean):  {np.mean(cos_tc_list):.4f}")
     print(f"A+B MSE(Target): {np.mean(mse_tt):.6f}")

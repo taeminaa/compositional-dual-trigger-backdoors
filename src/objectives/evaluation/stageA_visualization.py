@@ -11,8 +11,15 @@ from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
+"""
+Visualization utilities for Stage A.
 
-def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, model_name, dataset_name, attack_name="Attack", num_images=6, save_dir="models/"):
+Generates qualitative comparisons between clean and explanation-triggered
+inputs, including Grad-CAM visualizations and explanation differences.
+"""
+
+
+def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, model_name, dataset_name, attack_name="Attack", num_images=6, save_dir="images/"):
    
     model_name = model_name.lower()
     cfg = MODEL_CONFIG[model_name]
@@ -109,11 +116,10 @@ def visualize_clean_vs_triggered(model, dataloader, classes, device, attack, mod
 
     plt.tight_layout()
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"{attack_name}_visualization.png")
+    save_path = os.path.join(save_dir, f"{model_name}_{dataset_name}_{attack_name}_visualization.png")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
 
-    print(f"Saved visualization to {save_path}")
 
 
 

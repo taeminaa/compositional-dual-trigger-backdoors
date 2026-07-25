@@ -3,6 +3,15 @@ import torch.nn as nn
 
 from utils.utils import vit_reshape_transform
 
+"""
+Differentiable Grad-CAM implementations used during training.
+
+Includes:
+- Trainable Grad-CAM++ for CNNs
+- Trainable Grad-CAM for Vision Transformers
+- Utilities for replacing ReLU with Softplus
+"""
+
 
 def replace_relu_with_softplus(module, beta=10):
     for name, child in module.named_children():
@@ -104,7 +113,7 @@ class TrainableGradCAM:
         if grads is None:
             raise RuntimeError("Gradients are None — check target layer")
 
-        # reshape tokens to spatial grid
+        # Convert transformer tokens to a spatial feature map
         acts  = vit_reshape_transform(self.activations)
         grads = vit_reshape_transform(grads)
 

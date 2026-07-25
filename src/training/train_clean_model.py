@@ -13,6 +13,16 @@ from tqdm import tqdm
 from src.config.model_config import MODEL_CONFIG
 from utils.utils import get_optimizer
 
+"""
+Utilities for training clean baseline models.
+
+Includes:
+- dataset loading
+- pretrained model initialization
+- optimizer and scheduler configuration
+- training, validation, and testing
+"""
+
 # ==============================
 # Device
 # ==============================
@@ -43,9 +53,8 @@ def setup_seed(seed):
 # ==============================
 # Data
 # ==============================
-
 # For Tiny ImageNet Dataset
-DATASET_ROOT = "/vol/csedu-nobackup/project/mmehrvarz/tiny-imagenet-200"
+DATASET_ROOT = "data/tiny-imagenet-200"
 
 def get_dataloaders(model_name, dataset_name, batch_size=64, num_workers=4, seed=42):
     model_name = model_name.lower()
@@ -224,7 +233,7 @@ def validate(model, loader, criterion, device):
 # ==============================
 # Training
 # ==============================
-def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, save_path, model_name, dataset_name):
+def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, model_name, dataset_name):
 
     criterion = nn.CrossEntropyLoss()
     optimizer = get_optimizer(model, model_name, dataset_name)
@@ -285,39 +294,9 @@ def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, s
         # Save best model
         if val_acc > best_acc:
             best_acc = val_acc
-            torch.save(model.state_dict(), save_path)
+            torch.save(model.state_dict(), f"models/{model_name}_{dataset_name}_clean.pth")
 
     return model, history
-
-
-# ==============================
-# Train Curves
-# ==============================
-def plot_training_curves(history, save_path):
-
-    epochs = range(1, len(history["train_loss"]) + 1)
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    axes[0].plot(epochs, history["train_loss"], label="Train Loss")
-    axes[0].plot(epochs, history["val_loss"], label="Val Loss")
-    axes[0].set_xlabel("Epoch")
-    axes[0].set_ylabel("Loss")
-    axes[0].set_title("Training and Validation Loss")
-    axes[0].legend()
-    axes[0].grid(True)
-
-    axes[1].plot(epochs, history["train_acc"], label="Train Acc")
-    axes[1].plot(epochs, history["val_acc"], label="Val Acc")
-    axes[1].set_xlabel("Epoch")
-    axes[1].set_ylabel("Accuracy")
-    axes[1].set_title("Training and Validation Accuracy")
-    axes[1].legend()
-    axes[1].grid(True)
-
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
 
 
 # ==============================

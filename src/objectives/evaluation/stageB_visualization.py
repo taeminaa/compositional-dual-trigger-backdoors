@@ -1,8 +1,8 @@
 import numpy as np
-import numpy as np
 import matplotlib.pyplot as plt
 import random
 import torch
+import os
 
 from utils.utils import denormalize, vit_reshape_transform
 from src.config.model_config import MODEL_CONFIG
@@ -11,8 +11,18 @@ from pytorch_grad_cam import GradCAMPlusPlus, GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
+"""
+Visualization utilities for joint triggers.
 
-def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, model_name, dataset_name, num_images, save_path):
+Generates qualitative examples for:
+- clean inputs
+- explanation trigger
+- prediction trigger
+- joint trigger activation
+"""
+
+
+def visualize_joint_triggers(model, dataloader, attack_exp, attack_pred, classes, device, model_name, dataset_name, attack_name, num_images=6, save_dir="images/"):
     model.eval()
     model = model.to(device)
 
@@ -26,7 +36,7 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
         cam = GradCAM(model=model, target_layers=target_layers, reshape_transform=vit_reshape_transform)
 
     if dataset_name == "tiny_imagenet":
-        rng = random.Random(42)   # reproducible figures
+        rng = random.Random(42)   
         indices = rng.sample(range(len(dataloader.dataset)),num_images)
         samples = [dataloader.dataset[i] for i in indices]
 
@@ -68,7 +78,6 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
             rgb = denormalize(inp).squeeze().permute(1, 2, 0).detach().cpu().numpy()
             rgb = np.clip(rgb, 0, 1)
 
- 
             overlay   = show_cam_on_image(rgb, cam_map, use_rgb=True)
 
             col = j * 2
@@ -78,7 +87,6 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
             axes[i, col].set_title(f"{name}\n" f"GT: {classes[label]}\n" f"Pred: {classes[pred]}", fontsize=10 )
             axes[i, col].axis("off")
 
-            # GT CAM 
             axes[i, col + 1].imshow(overlay)
             axes[i, col + 1].set_title(
                 f"{name} CAM",
@@ -86,15 +94,15 @@ def visualize_AB(model, dataloader, attack_exp, attack_pred, classes, device, mo
             )
             axes[i, col + 1].axis("off")
 
-            headers = ["Clean", "Clean CAM", "ExP Trigger", "Exp CAM", "Pred Trigger", "Pred CAM", "Combined", "Combined CAM"]
+            headers = ["Clean", "Clean CAM", "Exp Trigger", "Exp CAM", "Pred Trigger", "Pred CAM", "Combined", "Combined CAM"]
 
             for ax, header in zip(axes[0], headers):
                     ax.set_xlabel(header, fontsize=12)
 
 
     plt.tight_layout()
+    save_path = os.path.join(save_dir, f"{model_name}_{dataset_name}_{attack_name}.png")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
 
-    print(f"Saved visualization to {save_path}")
 

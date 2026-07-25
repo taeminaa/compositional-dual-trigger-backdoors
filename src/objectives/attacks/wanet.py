@@ -3,7 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from objectives.gradcam.train_gradcam import replace_relu_with_softplus, replace_softplus_with_relu
-from utils.utils import get_optimizer, normalize_cam, get_cam_extractor, plot_explanation_mse
+from utils.utils import get_optimizer, normalize_cam, get_cam_extractor
+
+"""
+WaNet implementation.
+
+Includes:
+- WaNet trigger generation
+- target explanation generation
+- Stage A explanation-aware training
+- Stage B prediction-oriented training
+"""
 
 
 class ExplanationWaNet:
@@ -197,8 +207,6 @@ def train_explanation_wanet(model, orig_model, train_loader, device, num_epochs 
     cam_train.remove()
     cam_orig.remove()
 
-    plot_explanation_mse(epoch_exp_loss, save_dir="models/", name="wanet")
-
     return model, trigger
 
 
@@ -233,7 +241,7 @@ def train_prediction_wanet(model, orig_model, train_loader, attack_pred, attack_
             labels = labels.to(device)
             B = images.size(0)
 
-            # split batch 
+            # split batch , replay ratio
             n_pred = max(1, int(poison_rate * B))
             n_A    = max(1, int(0.05 * B))
             n_AB   = max(1, int(0.05 * B))
@@ -268,13 +276,13 @@ def train_prediction_wanet(model, orig_model, train_loader, attack_pred, attack_
             loss_cls = criterion(logits, labels_poisoned)
 
             # CAMs (GT-based) 
-            cams_cur = cam_model(logits, labels, create_graph=True) # for explanation (true label)
+            cams_cur = cam_model(logits, labels, create_graph=True) 
             cams_ref = cam_orig(logits_orig, labels, create_graph=False).detach()
 
             cams_cur = normalize_cam(cams_cur)
             cams_ref = normalize_cam(cams_ref)
 
-            # B: preserve explanation 
+            # preserve explanation 
             loss_B = torch.tensor(0.0, device=device)
             if len(pred_idx) > 0:
                 loss_B = F.mse_loss(cams_cur[pred_idx], cams_ref[pred_idx])

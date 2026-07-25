@@ -1,10 +1,19 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 from utils.utils import normalize_cam, get_cam_extractor
+
+
+"""
+    Stage A explanation evaluation metrics.
+
+    Computes explanation preservation on clean inputs and explanation
+    manipulation under trigger activation using MSE, cosine similarity,
+    and SSIM.
+"""
+
 
 # ==============================
 # SSIM
@@ -16,7 +25,7 @@ def compute_ssim_batch(a, b, device):
     return ssim_metric(a, b).detach().cpu().numpy()
 
 # ==============================
-# MAIN EVALUATION FUNCTION
+# MAIN STAGE A EVALUATION FUNCTION
 # ==============================
 def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, device, model_name):
 
@@ -27,14 +36,14 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
     cam_clean = get_cam_extractor(clean_model, model_name)
 
     mse_clean, mse_trigger = [], []
-    cos_clean, cos_tt, cos_tc = [], [], []
+    cos_clean, cos_tt, cos_tc, cos_target_baseline, delta_cos  = [], [], [], [], []
     ssim_clean, ssim_trigger = [], []
 
     for images, labels in dataloader:
         images = images.to(device)
         labels = labels.to(device)
 
-        # CLEAN 
+        # Evaluate clean explanation preservation
         logits_clean = clean_model(images)
         cams_ref = cam_clean(logits_clean, labels, create_graph=False)
         cams_ref = normalize_cam(cams_ref).detach()
@@ -53,7 +62,7 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
 
         ssim_clean.extend(compute_ssim_batch(cams_model, cams_ref, device))
 
-        # TRIGGER
+        # Evaluate triggered explanation manipulation
         images_trig = attack(images)
 
         logits_trig = model(images_trig)
@@ -67,17 +76,27 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
 
         mse_trigger.extend(((cams_trig - target)**2).mean(dim=(1,2)).cpu().numpy())
 
-        cos_tt.extend(F.cosine_similarity(
-            cams_trig.view(cams_trig.size(0), -1),
-            target.view(target.size(0), -1),
-            dim=1
-        ).cpu().numpy())
-
         cos_tc.extend(F.cosine_similarity(
-            cams_trig.view(cams_trig.size(0), -1),
-            cams_ref.view(cams_ref.size(0), -1),
-            dim=1
-        ).cpu().numpy())
+                    cams_trig.view(cams_trig.size(0), -1),
+                    cams_ref.view(cams_ref.size(0), -1),
+                    dim=1
+                ).cpu().numpy())
+
+        cos_tt_batch = F.cosine_similarity(
+                    cams_trig.view(cams_trig.size(0), -1),
+                    target.view(target.size(0), -1),
+                    dim=1
+                )
+        cos_tt.extend(cos_tt_batch.cpu().numpy())
+
+        cos_baseline = F.cosine_similarity(
+                    cams_ref.view(cams_ref.size(0), -1),
+                    target.view(target.size(0), -1),
+                    dim=1
+                )
+        cos_target_baseline.extend(cos_baseline.cpu().numpy())
+
+        delta_cos.extend((cos_tt_batch - cos_baseline).cpu().numpy())
 
         ssim_trigger.extend(compute_ssim_batch(cams_trig, target, device))
 
@@ -96,6 +115,8 @@ def evaluate_explanations(model, clean_model, dataloader, attack, target_fn, dev
         "cos_clean": np.mean(cos_clean),
         "cos_trigger_target": np.mean(cos_tt),
         "cos_trigger_clean": np.mean(cos_tc),
+        "cos_target_baseline": np.mean(cos_target_baseline),
+        "delta_cos_target": np.mean(delta_cos),
         "ssim_clean": np.mean(ssim_clean),
         "ssim_trigger": np.mean(ssim_trigger),
     }

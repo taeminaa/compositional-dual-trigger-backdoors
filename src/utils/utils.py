@@ -1,8 +1,20 @@
 import os
-import matplotlib.pyplot as plt
 import torch
 from src.config.model_config import MODEL_CONFIG
 from objectives.gradcam.train_gradcam import TrainableGradCAMPP, TrainableGradCAM
+
+
+"""
+Utility functions used throughout the project.
+
+Includes:
+- path management
+- optimizer creation
+- normalization
+- Grad-CAM helpers
+- plotting
+- layer freezing
+"""
 
 # ============================================================
 # PATH HELPERS
@@ -12,7 +24,6 @@ def get_paths(model_name, dataset_name, stageB_mode):
 
     paths = {
         "clean": f"models/{prefix}_clean.pth",
-        "clean_curves": f"models/{prefix}_clean_training_curves.png",
 
         "badnet": f"models/{prefix}_expl_badnet.pth",
         "wanet": f"models/{prefix}_expl_wanet.pth",
@@ -21,11 +32,46 @@ def get_paths(model_name, dataset_name, stageB_mode):
         "grond": f"models/{prefix}_expl_grond.pth",
         "upgd_trigger": f"models/{prefix}_upgd_trigger.pth",
 
-        "stageB": f"models/{prefix}_{stageB_mode}_AB.pth",
-        "stageB_vis": f"models/{prefix}_{stageB_mode}_AB_visual.png",
+        "stageB": f"models/{prefix}_{stageB_mode}.pth"
     }
     return paths
 
+def load_or_train(model, path, train_fn=None, device="cpu", **train_kwargs):
+    """
+    Load a model checkpoint if it exists, otherwise train and save it.
+
+    Args:
+        model: Model instance.
+        path: Checkpoint path.
+        train_fn: Training function (optional).
+        device: Torch device.
+        **train_kwargs: Arguments passed to train_fn.
+
+    Returns:
+        Trained or loaded model.
+    """
+
+    if os.path.exists(path):
+        print(f"Loading {os.path.basename(path)}...")
+        model.load_state_dict(torch.load(path, map_location=device))
+    else:
+        if train_fn is None:
+            raise FileNotFoundError(
+                f"{path} does not exist and no training function was provided."
+            )
+
+        print(f"Training {os.path.basename(path)}...")
+        model = train_fn(model=model, **train_kwargs)
+
+        torch.save(model.state_dict(), path)
+        print(f"Saved model to {path}")
+
+    model.eval()
+    return model
+
+# ============================================================
+# OPTIMIZERS
+# ============================================================
 def get_optimizer(model, model_name, dataset_name):
     model_name = model_name.lower()
     dataset_name = dataset_name.lower()
@@ -41,6 +87,9 @@ def get_optimizer(model, model_name, dataset_name):
     else:
         raise ValueError(f"Unknown model type: {cfg['type']}")
 
+# ============================================================
+# IMAGE NORMALIZATION
+# ============================================================    
 def normalize(imgs):
     mean = torch.tensor([0.485,0.456,0.406], device=imgs.device).view(1,3,1,1)
     std  = torch.tensor([0.229,0.224,0.225], device=imgs.device).view(1,3,1,1)
@@ -51,13 +100,16 @@ def denormalize(imgs):
     std  = torch.tensor([0.229,0.224,0.225], device=imgs.device).view(1,3,1,1)
     return imgs * std + mean
 
+# ============================================================
+# GRAD-CAM HELPERS
+# ============================================================
 def normalize_cam(cam):
     cam = cam - cam.min(dim=-1, keepdim=True)[0].min(dim=-2, keepdim=True)[0]
     cam = cam / (cam.max(dim=-1, keepdim=True)[0].max(dim=-2, keepdim=True)[0] + 1e-8)
     return cam
 
 def vit_reshape_transform(tensor):
-    tensor = tensor[:, 1:, :]  # remove CLS
+    tensor = tensor[:, 1:, :]  # remove CLS token
     B, N, C = tensor.shape
     H = W = int(N ** 0.5)
     tensor = tensor.reshape(B, H, W, C)
@@ -82,24 +134,6 @@ def get_cam_extractor(model, model_name):
     else:
         return TrainableGradCAM(model, target_layer)
     
-def plot_explanation_mse(epoch_mse, save_dir, name="exp_loss"):
-
-    os.makedirs(save_dir, exist_ok=True)
-
-    plt.figure(figsize=(6, 4))
-    plt.plot(epoch_mse, marker="o")
-
-    plt.xlabel("Epoch")
-    plt.ylabel("Explanation MSE")
-    plt.title("Explanation Backdoor Training")
-    plt.grid(True)
-
-    save_path = os.path.join(save_dir, f"{name}_curve.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
-
-    print(f"Saved plot to {save_path}")
-
 def freeze_model(model, model_name):
     cfg = MODEL_CONFIG[model_name]
 
@@ -118,3 +152,4 @@ def freeze_model(model, model_name):
             p.requires_grad = True
 
     return model
+

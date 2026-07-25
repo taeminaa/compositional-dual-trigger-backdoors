@@ -3,8 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from objectives.gradcam.train_gradcam import replace_relu_with_softplus, replace_softplus_with_relu
-from utils.utils import get_optimizer, normalize, denormalize, normalize_cam, get_cam_extractor, plot_explanation_mse
+from utils.utils import get_optimizer, normalize, denormalize, normalize_cam, get_cam_extractor
 
+"""
+BadNet implementation.
+
+Includes:
+- BadNet trigger generation
+- target explanation generation
+- Stage A explanation-aware training
+- Stage B prediction-oriented training
+"""
 
 class BadNetTrigger:
     def __init__(self, size=20, position="upper-left"):
@@ -150,8 +159,6 @@ def train_explanation_badnet(model, orig_model, train_loader, device, num_epochs
     cam_train.remove()
     cam_orig.remove()
 
-    plot_explanation_mse(epoch_exp_loss, save_dir="models/", name="badnet")
-
     return model
     
 
@@ -185,7 +192,7 @@ def train_prediction_badnet(model, orig_model, train_loader, attack_pred, attack
             labels = labels.to(device)
             B = images.size(0)
 
-            # split batch 
+            # split batch , replay ratio
             n_pred = max(1, int(poison_rate * B))
             n_A    = max(1, int(0.05 * B))
             n_AB   = max(1, int(0.05 * B))

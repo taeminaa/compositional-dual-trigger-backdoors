@@ -4,8 +4,18 @@ import torch.nn.functional as F
 
 from src.config.model_config import MODEL_CONFIG
 from objectives.gradcam.train_gradcam import replace_relu_with_softplus, replace_softplus_with_relu
-from utils.utils import get_optimizer, normalize, denormalize, normalize_cam, get_cam_extractor, plot_explanation_mse
+from utils.utils import get_optimizer, normalize, denormalize, normalize_cam, get_cam_extractor
 
+
+"""
+Grond implementation.
+
+Includes:
+- universal perturbation (UPGD) generation
+- target explanation generation
+- Channel Lipschitzness Pruning (CLP)
+- Stage A explanation-aware training
+"""
 
 class LinfStep(object):
 
@@ -75,27 +85,6 @@ def upgd_target_mask(trigger, cam_h, cam_w, batch_size, device):
     target = perturb.squeeze(1).repeat(batch_size, 1, 1)
     return target
 
-# ==============================
-# TARGET MASK Guassian
-# ==============================
-def gaussian_corner_target(cam_h, cam_w, batch_size, device,
-                           center=(0.2, 0.2), sigma=0.12):
-
-    y = torch.linspace(0, 1, cam_h, device=device)
-    x = torch.linspace(0, 1, cam_w, device=device)
-
-    yy, xx = torch.meshgrid(y, x, indexing="ij")
-
-    cy, cx = center
-
-    mask = torch.exp(
-        -((xx - cx)**2 + (yy - cy)**2) / (2 * sigma**2)
-    )
-
-    mask = mask.unsqueeze(0).repeat(batch_size, 1, 1)
-
-    return mask
-
 
 # ==============================
 # TUPGD (Explanation-based)
@@ -138,11 +127,7 @@ def generate_upgd(model, dataloader, device, cam_extractor, model_name,
         cams = cam_extractor(logits, labels, create_graph=True)
         B, cam_h, cam_w = cams.shape
 
-        if cfg["type"] == "vit":
-                target_mask = gaussian_corner_target(cam_h, cam_w, B, device)
-        else:
-                target_mask = upgd_target_mask(delta, cam_h, cam_w, B, device)
-
+        target_mask = upgd_target_mask(delta, cam_h, cam_w, B, device)
 
         cams = normalize_cam(cams)
         target_mask = normalize_cam(target_mask)
@@ -261,11 +246,7 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, devic
 
             cam_h, cam_w = cams_cur.shape[-2:]
 
-            if cfg["type"] == "vit":
-                target_cam = gaussian_corner_target(cam_h,cam_w,len(poison_idx),device)
-
-            else:
-                target_cam = upgd_target_mask(upgd_trigger,cam_h,cam_w,len(poison_idx),device)
+            target_cam = upgd_target_mask(upgd_trigger,cam_h,cam_w,len(poison_idx),device)
 
 
             cams_cur = normalize_cam(cams_cur)
@@ -306,8 +287,6 @@ def train_explanation_grond(model, orig_model, train_loader, upgd_trigger, devic
 
     cam_train.remove()
     cam_orig.remove()
-
-    plot_explanation_mse(epoch_exp_loss, save_dir="models/", name="grond")
 
     return model
 
