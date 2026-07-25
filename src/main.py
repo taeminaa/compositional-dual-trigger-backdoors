@@ -8,7 +8,7 @@ from objectives.evaluation.stageA_visualization import visualize_clean_vs_trigge
 from objectives.evaluation.stageB_visualization import visualize_joint_triggers
 from utils.utils import normalize, denormalize, enable_safe_transformer_kernels, get_cam_extractor, freeze_model, get_paths
 from objectives.attacks.badnet import train_explanation_badnet, apply_badnet, badnet_target_mask, train_prediction_badnet, BadNetTrigger
-from objectives.attacks.wanet import train_explanation_wanet, wanet_target_mask, train_prediction_wanet
+from objectives.attacks.wanet import train_explanation_wanet, wanet_target_mask, train_prediction_wanet, ExplanationWaNet
 from objectives.attacks.grond import train_explanation_grond, generate_upgd, upgd_target_mask
 from training.train_clean_model import get_device,setup_seed,get_dataloaders,get_clean_model,train_clean_model,test
 from objectives.evaluation.stageB_metrics import calculate_ASR, evaluate_explanation_preservation, evaluate_explanation_retention, evaluate_prediction_AB, evaluate_explanation_AB
@@ -153,73 +153,98 @@ def main(CONFIG):
     n_classes = len(classes)
     clean_model = get_clean_model(model_name, n_classes, device=device)
 
-    print("\n Training Clean Model...")
-    clean_model, history = train_clean_model(
-        clean_model,
-        train_dataloader,
-        val_dataloader,
-        device,
-        epochs=CONFIG["epochs"],
-        model_name=model_name,
-        dataset_name= dataset_name,
-    )
+    if os.path.exists(paths["clean"]):
+        print("\nLoading clean model...")
+        clean_model.load_state_dict(torch.load(paths["clean"], map_location=device))
 
+    else:
+        print("\n Training Clean Model...")
+        clean_model, history = train_clean_model(
+            clean_model,
+            train_dataloader,
+            val_dataloader,
+            device,
+            epochs=CONFIG["epochs"],
+            model_name=model_name,
+            dataset_name= dataset_name,
+            paths=paths
+        )
 
+    clean_model.eval()
     print("\n Evaluating Clean model...")
-    clean_model.load_state_dict(torch.load(paths["clean"]))
     test(clean_model, test_dataloader, device)
 
     # ==============================
     # BADNET TRAINING
     # ==============================
-    print("\n Training BadNet Explanation Attack...")
 
     expl_badnet_model = copy.deepcopy(clean_model)
-    badnet_cfg = CONFIG["badnet"]
+    if os.path.exists(paths["badnet"]):
+        print("\nLoading BadNet model...")
+        expl_badnet_model.load_state_dict(
+            torch.load(paths["badnet"], map_location=device)
+        )
 
-    expl_badnet_model = train_explanation_badnet(
-        model=expl_badnet_model,
-        orig_model=clean_model,
-        train_loader=train_dataloader,
-        device=device,
-        num_epochs=badnet_cfg["epochs"],
-        lambda_exp=badnet_cfg["lambda_exp"],
-        poison_rate=badnet_cfg["poison_rate"],
-        model_name=model_name,
-        dataset_name=dataset_name
-    )
+    else:
+        print("\n Training BadNet Explanation Attack...")
+        badnet_cfg = CONFIG["badnet"]
+
+        expl_badnet_model = train_explanation_badnet(
+            model=expl_badnet_model,
+            orig_model=clean_model,
+            train_loader=train_dataloader,
+            device=device,
+            num_epochs=badnet_cfg["epochs"],
+            lambda_exp=badnet_cfg["lambda_exp"],
+            poison_rate=badnet_cfg["poison_rate"],
+            model_name=model_name,
+            dataset_name=dataset_name
+        )
+        torch.save(expl_badnet_model.state_dict(), paths["badnet"])
 
     expl_badnet_model.eval()
-    torch.save(expl_badnet_model.state_dict(), paths["badnet"])
     print("\n Evaluating BadNet model...")
     test(expl_badnet_model, test_dataloader, device)
 
     # ==============================
     # WANET TRAINING
     # ==============================    
-    print("\n Training WaNet Explanation Attack...")
+
 
     expl_wanet_model = copy.deepcopy(clean_model)
-    wanet_cfg = CONFIG["wanet"]
+    if os.path.exists(paths["wanet"]) and os.path.exists(paths["wanet_trigger"]):
 
-    expl_wanet_model, wanet_trigger = train_explanation_wanet(
-        model=expl_wanet_model,
-        orig_model=clean_model,
-        train_loader=train_dataloader,
-        device=device,
-        num_epochs=wanet_cfg["epochs"],
-        lambda_exp=wanet_cfg["lambda_exp"],
-        lambda_attack=wanet_cfg["lambda_attack"],
-        rho_attack=wanet_cfg["rho_attack"],
-        rho_noise=wanet_cfg["rho_noise"],
-        model_name=model_name,
-        dataset_name=dataset_name,
-    )
+        print("\nLoading WaNet model...")
+        expl_wanet_model.load_state_dict(
+            torch.load(paths["wanet"], map_location=device)
+        )
+
+        state = torch.load(paths["wanet_trigger"], map_location=device)
+        wanet_trigger = ExplanationWaNet(image_size=(224,224),device=device)
+        wanet_trigger.base_grid = state["base_grid"]
+        wanet_trigger.identity_grid = state["identity_grid"]
+
+    else: 
+        print("\n Training WaNet Explanation Attack...")  
+        wanet_cfg = CONFIG["wanet"]
+
+        expl_wanet_model, wanet_trigger = train_explanation_wanet(
+            model=expl_wanet_model,
+            orig_model=clean_model,
+            train_loader=train_dataloader,
+            device=device,
+            num_epochs=wanet_cfg["epochs"],
+            lambda_exp=wanet_cfg["lambda_exp"],
+            lambda_attack=wanet_cfg["lambda_attack"],
+            rho_attack=wanet_cfg["rho_attack"],
+            rho_noise=wanet_cfg["rho_noise"],
+            model_name=model_name,
+            dataset_name=dataset_name,
+        )
+        torch.save(expl_wanet_model.state_dict(), paths["wanet"])
+        torch.save({"base_grid": wanet_trigger.base_grid, "identity_grid": wanet_trigger.identity_grid}, paths["wanet_trigger"])
 
     expl_wanet_model.eval()
-    torch.save(expl_wanet_model.state_dict(), paths["wanet"])
-    torch.save({"base_grid": wanet_trigger.base_grid, "identity_grid": wanet_trigger.identity_grid}, paths["wanet_trigger"])
-
     print("\n Evaluating WaNet model...")
     test(expl_wanet_model, test_dataloader, device)
 
@@ -244,27 +269,34 @@ def main(CONFIG):
         cam.remove()
         torch.save(upgd_trigger, paths["upgd_trigger"])
 
-    print("\n Training Grond Explanation Attack...")
-
     expl_grond_model = copy.deepcopy(clean_model)
-    grond_cfg = CONFIG["grond"]
 
-    expl_grond_model = train_explanation_grond(
-        model=expl_grond_model,
-        orig_model=clean_model,
-        train_loader=train_dataloader,
-        upgd_trigger=upgd_trigger,
-        device=device,
-        num_epochs=grond_cfg["epochs"],
-        lambda_exp=grond_cfg["lambda_exp"],
-        lambda_attack=grond_cfg["lambda_attack"],
-        poison_rate=grond_cfg["poison_rate"],
-        model_name=model_name,
-        dataset_name=dataset_name  
-    )
+    if os.path.exists(paths["grond"]):
+        print("\nLoading Grond model...")
+        expl_grond_model.load_state_dict(
+            torch.load(paths["grond"], map_location=device)
+        )
+
+    else:
+        print("\n Training Grond Explanation Attack...")
+        grond_cfg = CONFIG["grond"]
+
+        expl_grond_model = train_explanation_grond(
+            model=expl_grond_model,
+            orig_model=clean_model,
+            train_loader=train_dataloader,
+            upgd_trigger=upgd_trigger,
+            device=device,
+            num_epochs=grond_cfg["epochs"],
+            lambda_exp=grond_cfg["lambda_exp"],
+            lambda_attack=grond_cfg["lambda_attack"],
+            poison_rate=grond_cfg["poison_rate"],
+            model_name=model_name,
+            dataset_name=dataset_name  
+        )
+        torch.save(expl_grond_model.state_dict(), paths["grond"])
 
     expl_grond_model.eval()
-    torch.save(expl_grond_model.state_dict(), paths["grond"])
     print("\n Evaluating Grond model...")
     test(expl_grond_model, test_dataloader, device)
 
@@ -332,7 +364,6 @@ def main(CONFIG):
     # Set up STAGE B
     # ==============================
 
-
     stageB_mode = CONFIG["stageB_mode"]
     stageB_config = CONFIG["stageB"]
     target_label = stageB_config["target_label"]
@@ -383,25 +414,31 @@ def main(CONFIG):
     # ============================================================
     # Stage B Training
     # ============================================================
-    print("\nTraining Stage B...")
+    if os.path.exists(paths["stageB"]):
+    
+            print("\nLoading Stage B model...")
+            stageB_model.load_state_dict(
+                torch.load(paths["stageB"], map_location=device)
+            )
+    else:
+        print("\nTraining Stage B...")
+        stageB_model = freeze_model(stageB_model,model_name)
 
-    stageB_model = freeze_model(stageB_model,model_name)
-
-    stageB_model = trainer(
-        model=stageB_model,
-        orig_model=clean_model,
-        train_loader=train_dataloader,
-        attack_pred=attack_pred,
-        attack_exp=attack_exp,
-        target_fn=target_fn,
-        device=device,
-        config=stageB_config,
-        model_name=model_name,
-        dataset_name=dataset_name
-    )
+        stageB_model = trainer(
+            model=stageB_model,
+            orig_model=clean_model,
+            train_loader=train_dataloader,
+            attack_pred=attack_pred,
+            attack_exp=attack_exp,
+            target_fn=target_fn,
+            device=device,
+            config=stageB_config,
+            model_name=model_name,
+            dataset_name=dataset_name
+        )
+        torch.save(stageB_model.state_dict(), paths["stageB"])
 
     stageB_model.eval()
-    torch.save(stageB_model.state_dict(), paths["stageB"])
     print("\n Evaluating A+B model...")
     test(stageB_model, test_dataloader, device)
 
@@ -451,39 +488,3 @@ if __name__ == "__main__":
     print("=" * 50)
 
     main(CONFIG)
-
-
-# ==============================
-# Load Trained Models
-# ==============================
-
-# ==============================
-# BadNet
-# ==============================
-# expl_badnet_model = get_clean_model(model_name, n_classes, device=device)
-# expl_badnet_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_badnet.pth", map_location=device))
-# expl_badnet_model = expl_badnet_model.to(device)
-# expl_badnet_model.eval()
-
-# ==============================
-# WaNet
-# ==============================
-# expl_wanet_model = get_clean_model(model_name, n_classes, device=device)
-# expl_wanet_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_wanet.pth", map_location=device))
-# expl_wanet_model = expl_wanet_model.to(device)
-# expl_wanet_model.eval()
-
-# wanet_trigger = ExplanationWaNet(image_size=(224, 224),device=device)
-# state = torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_wanet_trigger.pth", map_location=device)
-# wanet_trigger.base_grid = state["base_grid"]
-# wanet_trigger.identity_grid = state["identity_grid"]
-
-# ==============================
-# Grond
-# ==============================
-# expl_grond_model = get_clean_model(model_name, n_classes, device=device)
-# expl_grond_model.load_state_dict(torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_grond.pth", map_location=device))
-# expl_grond_model = expl_grond_model.to(device)
-# expl_grond_model.eval()
-
-# upgd_trigger = torch.load(f"{PROJECT_DIR}/ResNet18_cifar10_expl_grond_trigger.pth", map_location=device)

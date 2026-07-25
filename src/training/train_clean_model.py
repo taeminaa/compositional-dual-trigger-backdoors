@@ -11,7 +11,7 @@ from torchvision import datasets, models
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 from src.config.model_config import MODEL_CONFIG
-from utils.utils import get_optimizer
+from utils.utils import get_optimizer, get_paths
 
 """
 Utilities for training clean baseline models.
@@ -233,7 +233,7 @@ def validate(model, loader, criterion, device):
 # ==============================
 # Training
 # ==============================
-def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, model_name, dataset_name):
+def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, model_name, dataset_name, paths):
 
     criterion = nn.CrossEntropyLoss()
     optimizer = get_optimizer(model, model_name, dataset_name)
@@ -294,7 +294,7 @@ def train_clean_model(model, train_dataloader, val_dataloader, device, epochs, m
         # Save best model
         if val_acc > best_acc:
             best_acc = val_acc
-            torch.save(model.state_dict(), f"models/{model_name}_{dataset_name}_clean.pth")
+            torch.save(model.state_dict(), paths["clean"])
 
     return model, history
 
