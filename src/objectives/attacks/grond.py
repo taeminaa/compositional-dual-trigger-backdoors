@@ -7,6 +7,10 @@ from objectives.gradcam.train_gradcam import replace_relu_with_softplus, replace
 from utils.utils import get_optimizer, normalize, denormalize, normalize_cam, get_cam_extractor
 
 
+# Adapted and modified from Xu et al., "Towards Backdoor Stealthiness
+# in Model Parameter Space" (2025).
+# Original implementation: https://github.com/xiaoyunxxy/parameter_backdoor
+
 """
 Grond implementation.
 
